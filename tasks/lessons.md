@@ -11,3 +11,8 @@
 
 4. **N8N_API_URL and N8N_API_KEY must be set** as environment variables for deploy/test via MCP tools.
    Without them, workflow can only be saved as JSON and imported manually.
+
+5. **If node `conditions.options` requires a `version` field**. For typeVersion 2.2, set `version: 2`.
+   Without it, workflow creation via API fails with: `Missing required field "conditions.options.version"`.
+
+6. **Use `activateWorkflow` operation type** (not `activate`) in `n8n_update_partial_workflow` to activate a workflow.

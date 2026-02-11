@@ -9,6 +9,6 @@
 * [x] Add Error Trigger node + Set node for workflow-level error logging
 * [x] Validate workflow with n8n-mcp (0 errors, 4 informational warnings)
 * [x] Save to workflows/webhook-uppercase.json
-* [ ] Deploy to n8n instance (blocked — N8N_API_URL / N8N_API_KEY not configured)
-* [ ] Test with curl (pending deploy)
+* [x] Deploy to n8n instance (ID: 3aDC1Pvr8AqQWD76, activated)
+* [x] Test with curl (success + error paths verified)
 * [x] Commit and update docs
