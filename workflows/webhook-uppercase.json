@@ -1,0 +1,171 @@
+{
+  "name": "Webhook Uppercase",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "uppercase",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "webhookId": "f9e8d7c6-2222-4000-8000-000000000001",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Validate input and convert message to uppercase\ntry {\n  const items = $input.all();\n  if (!items || items.length === 0) {\n    return [{ json: { error: 'No input data received', success: false } }];\n  }\n\n  const inputData = items[0].json;\n  // Support both webhook v2 (body object) and v1 (root level)\n  const message = inputData.body?.message ?? inputData.message;\n\n  if (message === undefined || message === null) {\n    return [{ json: { error: 'Missing required field: message', success: false } }];\n  }\n\n  if (typeof message !== 'string') {\n    return [{ json: { error: 'Field message must be a string', success: false } }];\n  }\n\n  return [{ json: { uppercaseMessage: message.toUpperCase(), original: message, success: true } }];\n} catch (err) {\n  return [{ json: { error: err.message || 'Unknown error occurred', success: false } }];\n}"
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000002",
+      "name": "Uppercase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition_success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000003",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [440, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000004",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [660, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000005",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [660, 100]
+    },
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-1111-4000-8000-000000000006",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign_status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "assign_workflow",
+              "name": "workflow",
+              "value": "={{ $json.workflow ? $json.workflow.name : 'Webhook Uppercase' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign_error",
+              "name": "errorMessage",
+              "value": "={{ $json.execution && $json.execution.error ? $json.execution.error.message : 'Unknown error' }}",
+              "type": "string"
+            },
+            {
+              "id": "assign_timestamp",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4000-8000-000000000007",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          { "node": "Uppercase", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Uppercase": {
+      "main": [
+        [
+          { "node": "Check Success", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          { "node": "Respond Success", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Respond Error", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          { "node": "Log Error", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
