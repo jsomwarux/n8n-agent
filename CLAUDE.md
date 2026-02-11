@@ -16,8 +16,9 @@ the workflow is deployed, tested, and documented.
 
 Every time a new session starts, do these 3 things BEFORE responding:
 
-1. Read tasks/lessons.md — learn from past mistakes. Do not repeat them.
-2. Read tasks/todo.md — check current state of in-progress work.
+1. Read tasks/lessons.md — this is the GLOBAL lessons file containing wisdom
+   from ALL client workflows. Learn from every lesson. Do not repeat past mistakes.
+2. Read the active client's tasks/todo.md if a client is specified.
 3. Then respond to the user's request.
 
 ## How to Build an n8n Workflow
@@ -151,9 +152,12 @@ curl -X POST http://localhost:5678/webhook/WORKFLOW_PATH \
 
 Use these two files to track work:
 
-- **tasks/todo.md** — Current plan with checkable items. Update as you complete steps.
-- **tasks/lessons.md** — Rules learned from past mistakes. Add to this whenever something
-  goes wrong so you never repeat it. Review at the start of every session.
+- **tasks/lessons.md** — GLOBAL. One file for ALL clients. Every lesson learned
+  from any workflow goes here. Read at the start of EVERY session. Write to it
+  after every completed workflow. Include which client/workflow the lesson came from.
+  Format: "- [client-name/workflow-name]: lesson description"
+
+- **clients/[name]/tasks/todo.md** — Per-client. Tracks tasks for that specific client only.
 
 ## Available Tools
 
@@ -169,3 +173,48 @@ Use these two files to track work:
 - /build-workflow — Build an n8n workflow (guided)
 - /validate — Validate all workflows
 - /test — Test a deployed workflow
+
+## Client Project Isolation
+
+CRITICAL RULE: Every client gets their own folder under clients/.
+NEVER modify files outside the active client's folder unless explicitly told to.
+
+### Client Folder Structure
+
+Each client folder looks like this:
+
+clients/
+├── client-name/
+│   ├── README.md              ← Client overview, contact info, what was built
+│   ├── brief.md               ← Industry/niche brief for this client
+│   ├── workflows/             ← Only THIS client's workflow JSON files
+│   ├── tasks/
+│   │   └── todo.md            ← Tasks for THIS client only
+│   └── tests/
+│       └── test-data.json     ← Sample inputs for testing
+
+NOTE: There is NO per-client lessons.md. All lessons go in the GLOBAL
+tasks/lessons.md at the project root.
+
+### Isolation Rules
+
+1. When told to work on a specific client, ONLY read and write files in that
+   client's folder: clients/[client-name]/
+2. NEVER modify another client's folder
+3. NEVER modify the root workflows/ folder (legacy — kept for non-client work only)
+4. Each client has their OWN todo.md inside their folder
+5. Lessons ALWAYS go in the GLOBAL tasks/lessons.md, tagged with the client name
+   Format: "- [client-name/workflow-name]: lesson description"
+6. When searching for context, read THAT client's brief.md
+7. Workflow JSON files are saved to clients/[client-name]/workflows/
+8. Git commit messages must include the client name: "Add [workflow] for [client]"
+
+### Starting Work on a Client
+
+When the user says to work on a client, IMMEDIATELY:
+1. Check if clients/[client-name]/ exists
+2. If not, create the full folder structure and ask for brief details
+3. Read tasks/lessons.md (GLOBAL) for wisdom from all past workflows
+4. Read clients/[client-name]/tasks/todo.md for this client's current state
+5. Read clients/[client-name]/brief.md for industry context
+6. Then proceed with the request
