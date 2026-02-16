@@ -25,9 +25,11 @@
 | Expression | What it does |
 |-----------|-------------|
 | `{{ $if($json.score > 80, "high", "low") }}` | Ternary condition |
-| `{{ $json.items?.length ?? 0 }}` | Nullish coalescing |
+| `{{ $json.items ? $json.items.length : 0 }}` | Safe length check (ternary) |
 
 ## Common Mistakes
+- WRONG: `{{ $json.fieldName?.nested }}` (optional chaining is NOT supported in n8n expressions)
+- RIGHT: `{{ $json.fieldName ? $json.fieldName.nested : 'fallback' }}` (use ternary instead)
 - WRONG: `{{ $json[fieldName] }}` (missing quotes)
 - RIGHT: `{{ $json['fieldName'] }}` or `{{ $json.fieldName }}`
 - WRONG: Using `$node["Name"]` (outdated syntax)

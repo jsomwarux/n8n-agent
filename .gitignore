@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+._*
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+
+# Node
+node_modules/
+
+# Logs
+logs/*.log
+
+# OS
+Thumbs.db
