@@ -1,0 +1,1363 @@
+{
+  "updatedAt": "2026-03-04T22:55:52.339Z",
+  "createdAt": "2026-03-04T22:29:43.054Z",
+  "id": "J9l8WJK3uwNriNJZ",
+  "name": "AI Multi-Channel Support Triage \u2014 Demo",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Webhook: New Ticket",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "support-triage",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "support-triage-webhook"
+    },
+    {
+      "id": "code-normalize",
+      "name": "Normalize Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.item.json.body || $input.item.json;\nreturn [{ json: { ticket_id: raw.ticket_id || ('TKT-' + Date.now()), channel: raw.channel || 'web', customer_name: raw.customer_name || 'Unknown Customer', customer_email: raw.customer_email || '', customer_tier: raw.customer_tier || 'standard', account_value: raw.account_value || '$0', subject: raw.subject || 'No subject', message: raw.message || '', prior_tickets_30d: raw.prior_tickets_30d || 0, received_at: new Date().toISOString() } }];"
+      }
+    },
+    {
+      "id": "code-prompt",
+      "name": "Build Triage Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const t = $input.item.json;\nconst prompt = 'Analyze the support ticket and return ONLY valid JSON. Customer: ' + t.customer_name + '. Tier: ' + t.customer_tier + '. Account: ' + t.account_value + '. Subject: ' + t.subject + '. Message: ' + t.message + '. Return JSON: {priority: CRITICAL/URGENT/HIGH/STANDARD/LOW, category: billing/technical/account_management/cancellation_risk/general, sentiment: angry/frustrated/neutral/satisfied, vip_customer: boolean, churn_risk: high/medium/low/none, assigned_team: billing_team/tier1_support/tier2_technical/account_management/retention_team, sla_hours: number, auto_response: string, agent_summary: string, tags: array, reasoning: string}. CRITICAL=cancellation or outage. URGENT=VIP or billing error. VIP if account over 10000/yr or enterprise tier.';\nreturn [{ json: { prompt: prompt, ticket_id: t.ticket_id, channel: t.channel, customer_name: t.customer_name, customer_email: t.customer_email, customer_tier: t.customer_tier, account_value: t.account_value, subject: t.subject, message: t.message, prior_tickets_30d: t.prior_tickets_30d, received_at: t.received_at } }];"
+      }
+    },
+    {
+      "id": "code-parse",
+      "name": "Parse Triage Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const response = $('Claude: Classify & Draft').item.json;\nconst content = (response.choices && response.choices[0] && response.choices[0].message) ? response.choices[0].message.content : '';\nconst ticket = $('Build Triage Prompt').item.json;\nlet parsed;\ntry { const m = content.match(/\\{[\\s\\S]*\\}/); parsed = JSON.parse(m ? m[0] : content); } catch(e) { parsed = { priority: 'STANDARD', category: 'general', sentiment: 'neutral', vip_customer: false, churn_risk: 'none', assigned_team: 'tier1_support', sla_hours: 8, auto_response: 'Hi ' + ticket.customer_name + ', we received your request and will respond within 8 hours.', agent_summary: 'AI parse failed \u2014 manual review needed.', tags: [], reasoning: 'Fallback routing.' }; }\nreturn [{ json: { ticket_id: ticket.ticket_id, channel: ticket.channel, customer_name: ticket.customer_name, customer_email: ticket.customer_email, customer_tier: ticket.customer_tier, account_value: ticket.account_value, subject: ticket.subject, message: ticket.message, prior_tickets_30d: ticket.prior_tickets_30d, received_at: ticket.received_at, priority: parsed.priority, category: parsed.category, sentiment: parsed.sentiment, vip_customer: parsed.vip_customer, churn_risk: parsed.churn_risk, assigned_team: parsed.assigned_team, sla_hours: parsed.sla_hours, auto_response: parsed.auto_response, agent_summary: parsed.agent_summary, tags: parsed.tags, reasoning: parsed.reasoning, processing_timestamp: new Date().toISOString() } }];"
+      }
+    },
+    {
+      "id": "if-urgent",
+      "name": "Urgent or VIP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "CRITICAL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "URGENT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "HIGH",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-prep-esc",
+      "name": "Prep Escalation Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        180
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { ...$('Parse Triage Result').item.json } }];"
+      }
+    },
+    {
+      "id": "http-slack-esc",
+      "name": "Slack: Escalation Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\ud83d\udea8 *' + $json.priority + ' TICKET* \u2014 #' + $json.ticket_id + ' | ' + $json.customer_name + ' (' + $json.customer_tier + ') | ' + $json.subject + ' | Team: ' + $json.assigned_team + ' | SLA: ' + $json.sla_hours + 'h | Churn: ' + $json.churn_risk }) }}"
+      }
+    },
+    {
+      "id": "gmail-agent",
+      "name": "Email: Agent Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1980,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "sendTo": "jtsomwaru+agent.escalation@gmail.com",
+        "subject": "={{ '[' + $json.priority + '] Ticket #' + $json.ticket_id + ' \u2014 ' + $json.customer_name }}",
+        "emailType": "html",
+        "message": "={{ '<h2>\u26a0\ufe0f ' + $json.priority + ' \u2014 #' + $json.ticket_id + '</h2><p><b>Customer:</b> ' + $json.customer_name + ' (' + $json.customer_tier + ')<br><b>Subject:</b> ' + $json.subject + '<br><b>Churn Risk:</b> ' + $json.churn_risk + '<br><b>Team:</b> ' + $json.assigned_team + '</p><h3>Agent Brief</h3><p>' + $json.agent_summary + '</p><h3>Message</h3><p>' + $json.message + '</p>' }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "code-sheets-esc",
+      "name": "Prep Sheets (Urgent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const d = $json; const tags = Array.isArray(d.tags) ? d.tags.join(', ') : ''; return [{ json: { 'Date': new Date().toISOString().split('T')[0], 'Ticket ID': d.ticket_id || '', 'Channel': d.channel || '', 'Customer': d.customer_name || '', 'Tier': d.customer_tier || '', 'Subject': d.subject || '', 'Priority': d.priority || '', 'Category': d.category || '', 'Sentiment': d.sentiment || '', 'Churn Risk': d.churn_risk || '', 'Assigned Team': d.assigned_team || '', 'SLA Hours': String(d.sla_hours || ''), 'VIP': d.vip_customer ? 'Yes' : 'No', 'Tags': tags, 'Reasoning': (d.reasoning || '').substring(0, 200), 'Processed At': d.processing_timestamp || '' } }];"
+      }
+    },
+    {
+      "id": "sheets-esc",
+      "name": "Log to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2420,
+        180
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      },
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Support Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-summary-esc",
+      "name": "Ticket Summary (Urgent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        180
+      ],
+      "parameters": {
+        "jsCode": "const d = $json; return [{ json: { status: 'escalated', ticket_id: d.ticket_id, priority: d.priority, customer: d.customer_name, assigned_team: d.assigned_team, actions: ['Slack alert sent', 'Agent email sent', 'Logged to sheet'] } }];"
+      }
+    },
+    {
+      "id": "code-prep-std",
+      "name": "Prep Standard Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        420
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { ...$('Parse Triage Result').item.json } }];"
+      }
+    },
+    {
+      "id": "http-slack-std",
+      "name": "Slack: Standard Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        420
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\ud83d\udccb *New Ticket* \u2014 #' + $json.ticket_id + ' (' + $json.priority + ') | ' + $json.customer_name + ' | ' + $json.subject + ' | Queue: ' + $json.assigned_team + ' | SLA: ' + $json.sla_hours + 'h' }) }}"
+      }
+    },
+    {
+      "id": "gmail-auto",
+      "name": "Email: Auto-Response",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1980,
+        420
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "sendTo": "={{ $json.customer_email }}",
+        "subject": "={{ 'Re: ' + $json.subject + ' [Ticket #' + $json.ticket_id + ']' }}",
+        "emailType": "text",
+        "message": "={{ $json.auto_response + '\\n\\nTicket #: ' + $json.ticket_id + '\\nExpected response: ' + $json.sla_hours + ' hours\\n\\nBest,\\nSupport Team' }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "code-sheets-std",
+      "name": "Prep Sheets (Standard)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const d = $json; const tags = Array.isArray(d.tags) ? d.tags.join(', ') : ''; return [{ json: { 'Date': new Date().toISOString().split('T')[0], 'Ticket ID': d.ticket_id || '', 'Channel': d.channel || '', 'Customer': d.customer_name || '', 'Tier': d.customer_tier || '', 'Subject': d.subject || '', 'Priority': d.priority || '', 'Category': d.category || '', 'Sentiment': d.sentiment || '', 'Churn Risk': d.churn_risk || '', 'Assigned Team': d.assigned_team || '', 'SLA Hours': String(d.sla_hours || ''), 'VIP': d.vip_customer ? 'Yes' : 'No', 'Tags': tags, 'Reasoning': (d.reasoning || '').substring(0, 200), 'Processed At': d.processing_timestamp || '' } }];"
+      }
+    },
+    {
+      "id": "sheets-std",
+      "name": "Log to Sheets (Standard)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2420,
+        420
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      },
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Support Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-summary-std",
+      "name": "Ticket Summary (Standard)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const d = $json; return [{ json: { status: 'queued', ticket_id: d.ticket_id, priority: d.priority, customer: d.customer_name, assigned_team: d.assigned_team, actions: ['Auto-response sent', 'Slack digest posted', 'Logged to sheet'] } }];"
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        220,
+        580
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "code-error",
+      "name": "Log Error Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        580
+      ],
+      "parameters": {
+        "jsCode": "const e = $input.item.json; return [{ json: { error_message: e.message || 'Unknown error', timestamp: new Date().toISOString(), workflow: 'AI Support Triage' } }];"
+      }
+    },
+    {
+      "id": "http-error",
+      "name": "Error Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        580
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\u274c *Support Triage Error* \u2014 ' + $json.error_message }) }}"
+      }
+    },
+    {
+      "id": "http-claude",
+      "name": "Claude: Classify & Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://jtsomwaru.com"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"anthropic/claude-3.5-sonnet\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": $json.prompt }] }) }}",
+        "sendBody": true
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: New Ticket": {
+      "main": [
+        [
+          {
+            "node": "Normalize Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Ticket": {
+      "main": [
+        [
+          {
+            "node": "Build Triage Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Triage Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude: Classify & Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Classify & Draft": {
+      "main": [
+        [
+          {
+            "node": "Parse Triage Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Triage Result": {
+      "main": [
+        [
+          {
+            "node": "Urgent or VIP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent or VIP?": {
+      "main": [
+        [
+          {
+            "node": "Prep Escalation Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Standard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Escalation Data": {
+      "main": [
+        [
+          {
+            "node": "Slack: Escalation Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Escalation Alert": {
+      "main": [
+        [
+          {
+            "node": "Email: Agent Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Agent Notification": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets (Urgent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Sheets (Urgent)": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Ticket Summary (Urgent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Standard Data": {
+      "main": [
+        [
+          {
+            "node": "Slack: Standard Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Standard Digest": {
+      "main": [
+        [
+          {
+            "node": "Email: Auto-Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Auto-Response": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Sheets (Standard)": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets (Standard)": {
+      "main": [
+        [
+          {
+            "node": "Ticket Summary (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Details": {
+      "main": [
+        [
+          {
+            "node": "Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "b9eaf8b3-8196-4cc1-bbc3-cb76bc344b13",
+  "activeVersionId": "b9eaf8b3-8196-4cc1-bbc3-cb76bc344b13",
+  "versionCounter": 34,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-04T22:29:43.055Z",
+      "createdAt": "2026-03-04T22:29:43.055Z",
+      "role": "workflow:owner",
+      "workflowId": "J9l8WJK3uwNriNJZ",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-04T22:55:52.339Z",
+    "createdAt": "2026-03-04T22:55:52.339Z",
+    "versionId": "b9eaf8b3-8196-4cc1-bbc3-cb76bc344b13",
+    "workflowId": "J9l8WJK3uwNriNJZ",
+    "nodes": [
+      {
+        "id": "webhook-1",
+        "name": "Webhook: New Ticket",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          220,
+          300
+        ],
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "support-triage",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "webhookId": "support-triage-webhook"
+      },
+      {
+        "id": "code-normalize",
+        "name": "Normalize Ticket",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          300
+        ],
+        "parameters": {
+          "jsCode": "const raw = $input.item.json.body || $input.item.json;\nreturn [{ json: { ticket_id: raw.ticket_id || ('TKT-' + Date.now()), channel: raw.channel || 'web', customer_name: raw.customer_name || 'Unknown Customer', customer_email: raw.customer_email || '', customer_tier: raw.customer_tier || 'standard', account_value: raw.account_value || '$0', subject: raw.subject || 'No subject', message: raw.message || '', prior_tickets_30d: raw.prior_tickets_30d || 0, received_at: new Date().toISOString() } }];"
+        }
+      },
+      {
+        "id": "code-prompt",
+        "name": "Build Triage Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          660,
+          300
+        ],
+        "parameters": {
+          "jsCode": "const t = $input.item.json;\nconst prompt = 'Analyze the support ticket and return ONLY valid JSON. Customer: ' + t.customer_name + '. Tier: ' + t.customer_tier + '. Account: ' + t.account_value + '. Subject: ' + t.subject + '. Message: ' + t.message + '. Return JSON: {priority: CRITICAL/URGENT/HIGH/STANDARD/LOW, category: billing/technical/account_management/cancellation_risk/general, sentiment: angry/frustrated/neutral/satisfied, vip_customer: boolean, churn_risk: high/medium/low/none, assigned_team: billing_team/tier1_support/tier2_technical/account_management/retention_team, sla_hours: number, auto_response: string, agent_summary: string, tags: array, reasoning: string}. CRITICAL=cancellation or outage. URGENT=VIP or billing error. VIP if account over 10000/yr or enterprise tier.';\nreturn [{ json: { prompt: prompt, ticket_id: t.ticket_id, channel: t.channel, customer_name: t.customer_name, customer_email: t.customer_email, customer_tier: t.customer_tier, account_value: t.account_value, subject: t.subject, message: t.message, prior_tickets_30d: t.prior_tickets_30d, received_at: t.received_at } }];"
+        }
+      },
+      {
+        "id": "code-parse",
+        "name": "Parse Triage Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1100,
+          300
+        ],
+        "parameters": {
+          "jsCode": "const response = $('Claude: Classify & Draft').item.json;\nconst content = (response.choices && response.choices[0] && response.choices[0].message) ? response.choices[0].message.content : '';\nconst ticket = $('Build Triage Prompt').item.json;\nlet parsed;\ntry { const m = content.match(/\\{[\\s\\S]*\\}/); parsed = JSON.parse(m ? m[0] : content); } catch(e) { parsed = { priority: 'STANDARD', category: 'general', sentiment: 'neutral', vip_customer: false, churn_risk: 'none', assigned_team: 'tier1_support', sla_hours: 8, auto_response: 'Hi ' + ticket.customer_name + ', we received your request and will respond within 8 hours.', agent_summary: 'AI parse failed \u2014 manual review needed.', tags: [], reasoning: 'Fallback routing.' }; }\nreturn [{ json: { ticket_id: ticket.ticket_id, channel: ticket.channel, customer_name: ticket.customer_name, customer_email: ticket.customer_email, customer_tier: ticket.customer_tier, account_value: ticket.account_value, subject: ticket.subject, message: ticket.message, prior_tickets_30d: ticket.prior_tickets_30d, received_at: ticket.received_at, priority: parsed.priority, category: parsed.category, sentiment: parsed.sentiment, vip_customer: parsed.vip_customer, churn_risk: parsed.churn_risk, assigned_team: parsed.assigned_team, sla_hours: parsed.sla_hours, auto_response: parsed.auto_response, agent_summary: parsed.agent_summary, tags: parsed.tags, reasoning: parsed.reasoning, processing_timestamp: new Date().toISOString() } }];"
+        }
+      },
+      {
+        "id": "if-urgent",
+        "name": "Urgent or VIP?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1320,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "combinator": "or",
+            "conditions": [
+              {
+                "id": "c1",
+                "leftValue": "={{ $json.priority }}",
+                "rightValue": "CRITICAL",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              },
+              {
+                "id": "c2",
+                "leftValue": "={{ $json.priority }}",
+                "rightValue": "URGENT",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              },
+              {
+                "id": "c3",
+                "leftValue": "={{ $json.priority }}",
+                "rightValue": "HIGH",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true
+            }
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "code-prep-esc",
+        "name": "Prep Escalation Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1540,
+          180
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { ...$('Parse Triage Result').item.json } }];"
+        }
+      },
+      {
+        "id": "http-slack-esc",
+        "name": "Slack: Escalation Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1760,
+          180
+        ],
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "POST",
+          "url": "https://hooks.slack.com/services/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",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ text: '\ud83d\udea8 *' + $json.priority + ' TICKET* \u2014 #' + $json.ticket_id + ' | ' + $json.customer_name + ' (' + $json.customer_tier + ') | ' + $json.subject + ' | Team: ' + $json.assigned_team + ' | SLA: ' + $json.sla_hours + 'h | Churn: ' + $json.churn_risk }) }}"
+        }
+      },
+      {
+        "id": "gmail-agent",
+        "name": "Email: Agent Notification",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          1980,
+          180
+        ],
+        "onError": "continueRegularOutput",
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "r3IbVQkW0d0j3icY",
+            "name": "Gmail account"
+          }
+        },
+        "parameters": {
+          "sendTo": "jtsomwaru+agent.escalation@gmail.com",
+          "subject": "={{ '[' + $json.priority + '] Ticket #' + $json.ticket_id + ' \u2014 ' + $json.customer_name }}",
+          "emailType": "html",
+          "message": "={{ '<h2>\u26a0\ufe0f ' + $json.priority + ' \u2014 #' + $json.ticket_id + '</h2><p><b>Customer:</b> ' + $json.customer_name + ' (' + $json.customer_tier + ')<br><b>Subject:</b> ' + $json.subject + '<br><b>Churn Risk:</b> ' + $json.churn_risk + '<br><b>Team:</b> ' + $json.assigned_team + '</p><h3>Agent Brief</h3><p>' + $json.agent_summary + '</p><h3>Message</h3><p>' + $json.message + '</p>' }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "code-sheets-esc",
+        "name": "Prep Sheets (Urgent)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          180
+        ],
+        "parameters": {
+          "jsCode": "const d = $json; const tags = Array.isArray(d.tags) ? d.tags.join(', ') : ''; return [{ json: { 'Date': new Date().toISOString().split('T')[0], 'Ticket ID': d.ticket_id || '', 'Channel': d.channel || '', 'Customer': d.customer_name || '', 'Tier': d.customer_tier || '', 'Subject': d.subject || '', 'Priority': d.priority || '', 'Category': d.category || '', 'Sentiment': d.sentiment || '', 'Churn Risk': d.churn_risk || '', 'Assigned Team': d.assigned_team || '', 'SLA Hours': String(d.sla_hours || ''), 'VIP': d.vip_customer ? 'Yes' : 'No', 'Tags': tags, 'Reasoning': (d.reasoning || '').substring(0, 200), 'Processed At': d.processing_timestamp || '' } }];"
+        }
+      },
+      {
+        "id": "sheets-esc",
+        "name": "Log to Sheets",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.5,
+        "position": [
+          2420,
+          180
+        ],
+        "onError": "continueRegularOutput",
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "QeZOA9lJuS7gGgES",
+            "name": "Google Sheets account"
+          }
+        },
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "Support Log",
+            "mode": "name"
+          },
+          "columns": {
+            "mappingMode": "autoMapInputData",
+            "matchingColumns": [],
+            "schema": []
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "code-summary-esc",
+        "name": "Ticket Summary (Urgent)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2640,
+          180
+        ],
+        "parameters": {
+          "jsCode": "const d = $json; return [{ json: { status: 'escalated', ticket_id: d.ticket_id, priority: d.priority, customer: d.customer_name, assigned_team: d.assigned_team, actions: ['Slack alert sent', 'Agent email sent', 'Logged to sheet'] } }];"
+        }
+      },
+      {
+        "id": "code-prep-std",
+        "name": "Prep Standard Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1540,
+          420
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { ...$('Parse Triage Result').item.json } }];"
+        }
+      },
+      {
+        "id": "http-slack-std",
+        "name": "Slack: Standard Digest",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1760,
+          420
+        ],
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "POST",
+          "url": "https://hooks.slack.com/services/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",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ text: '\ud83d\udccb *New Ticket* \u2014 #' + $json.ticket_id + ' (' + $json.priority + ') | ' + $json.customer_name + ' | ' + $json.subject + ' | Queue: ' + $json.assigned_team + ' | SLA: ' + $json.sla_hours + 'h' }) }}"
+        }
+      },
+      {
+        "id": "gmail-auto",
+        "name": "Email: Auto-Response",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          1980,
+          420
+        ],
+        "onError": "continueRegularOutput",
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "r3IbVQkW0d0j3icY",
+            "name": "Gmail account"
+          }
+        },
+        "parameters": {
+          "sendTo": "={{ $json.customer_email }}",
+          "subject": "={{ 'Re: ' + $json.subject + ' [Ticket #' + $json.ticket_id + ']' }}",
+          "emailType": "text",
+          "message": "={{ $json.auto_response + '\\n\\nTicket #: ' + $json.ticket_id + '\\nExpected response: ' + $json.sla_hours + ' hours\\n\\nBest,\\nSupport Team' }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "code-sheets-std",
+        "name": "Prep Sheets (Standard)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          420
+        ],
+        "parameters": {
+          "jsCode": "const d = $json; const tags = Array.isArray(d.tags) ? d.tags.join(', ') : ''; return [{ json: { 'Date': new Date().toISOString().split('T')[0], 'Ticket ID': d.ticket_id || '', 'Channel': d.channel || '', 'Customer': d.customer_name || '', 'Tier': d.customer_tier || '', 'Subject': d.subject || '', 'Priority': d.priority || '', 'Category': d.category || '', 'Sentiment': d.sentiment || '', 'Churn Risk': d.churn_risk || '', 'Assigned Team': d.assigned_team || '', 'SLA Hours': String(d.sla_hours || ''), 'VIP': d.vip_customer ? 'Yes' : 'No', 'Tags': tags, 'Reasoning': (d.reasoning || '').substring(0, 200), 'Processed At': d.processing_timestamp || '' } }];"
+        }
+      },
+      {
+        "id": "sheets-std",
+        "name": "Log to Sheets (Standard)",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.5,
+        "position": [
+          2420,
+          420
+        ],
+        "onError": "continueRegularOutput",
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "QeZOA9lJuS7gGgES",
+            "name": "Google Sheets account"
+          }
+        },
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "Support Log",
+            "mode": "name"
+          },
+          "columns": {
+            "mappingMode": "autoMapInputData",
+            "matchingColumns": [],
+            "schema": []
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "code-summary-std",
+        "name": "Ticket Summary (Standard)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2640,
+          420
+        ],
+        "parameters": {
+          "jsCode": "const d = $json; return [{ json: { status: 'queued', ticket_id: d.ticket_id, priority: d.priority, customer: d.customer_name, assigned_team: d.assigned_team, actions: ['Auto-response sent', 'Slack digest posted', 'Logged to sheet'] } }];"
+        }
+      },
+      {
+        "id": "error-trigger",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          220,
+          580
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "code-error",
+        "name": "Log Error Details",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          580
+        ],
+        "parameters": {
+          "jsCode": "const e = $input.item.json; return [{ json: { error_message: e.message || 'Unknown error', timestamp: new Date().toISOString(), workflow: 'AI Support Triage' } }];"
+        }
+      },
+      {
+        "id": "http-error",
+        "name": "Error Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          580
+        ],
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "method": "POST",
+          "url": "https://hooks.slack.com/services/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",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ text: '\u274c *Support Triage Error* \u2014 ' + $json.error_message }) }}"
+        }
+      },
+      {
+        "id": "http-claude",
+        "name": "Claude: Classify & Draft",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          880,
+          300
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://openrouter.ai/api/v1/chat/completions",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "Bearer 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"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "HTTP-Referer",
+                "value": "https://jtsomwaru.com"
+              }
+            ]
+          },
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ \"model\": \"anthropic/claude-3.5-sonnet\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": $json.prompt }] }) }}",
+          "sendBody": true
+        }
+      }
+    ],
+    "connections": {
+      "Webhook: New Ticket": {
+        "main": [
+          [
+            {
+              "node": "Normalize Ticket",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Ticket": {
+        "main": [
+          [
+            {
+              "node": "Build Triage Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Triage Prompt": {
+        "main": [
+          [
+            {
+              "node": "Claude: Classify & Draft",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claude: Classify & Draft": {
+        "main": [
+          [
+            {
+              "node": "Parse Triage Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Triage Result": {
+        "main": [
+          [
+            {
+              "node": "Urgent or VIP?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Urgent or VIP?": {
+        "main": [
+          [
+            {
+              "node": "Prep Escalation Data",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Prep Standard Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prep Escalation Data": {
+        "main": [
+          [
+            {
+              "node": "Slack: Escalation Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Slack: Escalation Alert": {
+        "main": [
+          [
+            {
+              "node": "Email: Agent Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Email: Agent Notification": {
+        "main": [
+          [
+            {
+              "node": "Prep Sheets (Urgent)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prep Sheets (Urgent)": {
+        "main": [
+          [
+            {
+              "node": "Log to Sheets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log to Sheets": {
+        "main": [
+          [
+            {
+              "node": "Ticket Summary (Urgent)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prep Standard Data": {
+        "main": [
+          [
+            {
+              "node": "Slack: Standard Digest",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Slack: Standard Digest": {
+        "main": [
+          [
+            {
+              "node": "Email: Auto-Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Email: Auto-Response": {
+        "main": [
+          [
+            {
+              "node": "Prep Sheets (Standard)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prep Sheets (Standard)": {
+        "main": [
+          [
+            {
+              "node": "Log to Sheets (Standard)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log to Sheets (Standard)": {
+        "main": [
+          [
+            {
+              "node": "Ticket Summary (Standard)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Log Error Details",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Error Details": {
+        "main": [
+          [
+            {
+              "node": "Error Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-04T22:55:53.553Z",
+        "id": 106,
+        "workflowId": "J9l8WJK3uwNriNJZ",
+        "versionId": "b9eaf8b3-8196-4cc1-bbc3-cb76bc344b13",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}
