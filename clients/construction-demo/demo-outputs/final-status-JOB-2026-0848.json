@@ -1,0 +1,24 @@
+{
+  "workflow_status": "success",
+  "timestamp": "2026-03-04T16:45:27.352Z",
+  "job_id": "JOB-2026-0848",
+  "customer_name": "James Whitfield",
+  "job_type": "HVAC",
+  "job_total": 2547.5,
+  "priority": "STANDARD",
+  "upsell_opportunity": true,
+  "upsell_note": "High-value job - consider maintenance contract upsell",
+  "actions_taken": [
+    "parse_validate",
+    "build_invoice",
+    "emergency_check",
+    "send_invoice_email",
+    "log_job_csv",
+    "wait_cooldown",
+    "send_review_request",
+    "upsell_check"
+  ],
+  "email_subject": "Invoice - HVAC Service - James Whitfield",
+  "review_subject": "How did we do today, James Whitfield?",
+  "csv_row": "March 4, 2026 | JOB-2026-0848 | James Whitfield | j.whitfield.test@mailinator.com | HVAC | Carlos Reyes | 1104 Flatbush Ave, Brooklyn, NY 11226 | 2547.50 | N | Y | Complete"
+}

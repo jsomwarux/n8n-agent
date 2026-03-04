@@ -1,0 +1,34 @@
+TO: j.whitfield.test@mailinator.com
+FROM: Opticfy Demo - Carlos Reyes
+SUBJECT: Invoice - HVAC Service - James Whitfield
+-------------------------------------------
+Dear James Whitfield,
+
+Thank you for choosing our hvac services. Please find your invoice details below.
+
+======= INVOICE - HVAC SERVICE =======
+
+Job ID:       JOB-2026-0848
+Date:         March 4, 2026
+Technician:   Carlos Reyes
+Customer:     James Whitfield
+Address:      1104 Flatbush Ave, Brooklyn, NY 11226
+
+--- DESCRIPTION ---
+Full HVAC system replacement - removed old 2008 unit, installed new Carrier 3-ton split system, tested all zones.
+
+--- LINE ITEMS ---
+Labor:              8 hrs @ $110.00/hr    $880.00
+Materials:                                $1450.00
+Materials Markup (15%):                   $217.50
+-------------------------------------------
+TOTAL DUE:                                $2547.50
+===========================================
+
+Payment due within 30 days.
+For questions, contact us at (212) 555-0100.
+Thank you for choosing our services!
+
+Best regards,
+Carlos Reyes
+Opticfy Demo - Carlos Reyes

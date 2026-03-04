@@ -1,0 +1,24 @@
+{
+  "workflow_status": "success",
+  "timestamp": "2026-03-04T16:45:27.338Z",
+  "job_id": "JOB-2026-0847",
+  "customer_name": "Maria Rodriguez",
+  "job_type": "Plumbing",
+  "job_total": 290.63,
+  "priority": "STANDARD",
+  "upsell_opportunity": false,
+  "upsell_note": "",
+  "actions_taken": [
+    "parse_validate",
+    "build_invoice",
+    "emergency_check",
+    "send_invoice_email",
+    "log_job_csv",
+    "wait_cooldown",
+    "send_review_request",
+    "upsell_check"
+  ],
+  "email_subject": "Invoice - Plumbing Service - Maria Rodriguez",
+  "review_subject": "How did we do today, Maria Rodriguez?",
+  "csv_row": "March 4, 2026 | JOB-2026-0847 | Maria Rodriguez | m.rodriguez.test@mailinator.com | Plumbing | Mike Ferrara | 2847 Grand Concourse, Bronx, NY 10468 | 290.63 | N | Y | Complete"
+}

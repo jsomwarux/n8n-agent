@@ -1,0 +1,34 @@
+TO: t.marchetti.test@mailinator.com
+FROM: Opticfy Demo - Dave Kim
+SUBJECT: URGENT: Invoice - Plumbing Service - Tony Marchetti
+-------------------------------------------
+Dear Tony Marchetti,
+
+Thank you for choosing our plumbing services. Please find your invoice details below.
+
+======= INVOICE - PLUMBING SERVICE =======
+
+Job ID:       JOB-2026-0849
+Date:         March 4, 2026
+Technician:   Dave Kim
+Customer:     Tony Marchetti
+Address:      540 W 43rd St, New York, NY 10036
+
+--- DESCRIPTION ---
+Emergency response - burst pipe in basement utility room. Shut off main, replaced 8ft section of 3/4-inch copper pipe, tested pressure.
+
+--- LINE ITEMS ---
+Labor:              3 hrs @ $145.00/hr    $435.00
+Materials:                                $165.00
+Materials Markup (15%):                   $24.75
+-------------------------------------------
+TOTAL DUE:                                $624.75
+===========================================
+
+Payment due within 30 days.
+For questions, contact us at (212) 555-0100.
+Thank you for choosing our services!
+
+Best regards,
+Dave Kim
+Opticfy Demo - Dave Kim

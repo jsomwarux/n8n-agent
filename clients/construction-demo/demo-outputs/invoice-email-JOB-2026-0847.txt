@@ -1,0 +1,34 @@
+TO: m.rodriguez.test@mailinator.com
+FROM: Opticfy Demo - Mike Ferrara
+SUBJECT: Invoice - Plumbing Service - Maria Rodriguez
+-------------------------------------------
+Dear Maria Rodriguez,
+
+Thank you for choosing our plumbing services. Please find your invoice details below.
+
+======= INVOICE - PLUMBING SERVICE =======
+
+Job ID:       JOB-2026-0847
+Date:         March 4, 2026
+Technician:   Mike Ferrara
+Customer:     Maria Rodriguez
+Address:      2847 Grand Concourse, Bronx, NY 10468
+
+--- DESCRIPTION ---
+Replaced kitchen faucet and fixed P-trap leak under sink. Installed new shut-off valves.
+
+--- LINE ITEMS ---
+Labor:              2 hrs @ $95.00/hr    $190.00
+Materials:                                $87.50
+Materials Markup (15%):                   $13.13
+-------------------------------------------
+TOTAL DUE:                                $290.63
+===========================================
+
+Payment due within 30 days.
+For questions, contact us at (212) 555-0100.
+Thank you for choosing our services!
+
+Best regards,
+Mike Ferrara
+Opticfy Demo - Mike Ferrara

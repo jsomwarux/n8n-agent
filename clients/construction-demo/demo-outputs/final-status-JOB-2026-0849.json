@@ -1,0 +1,24 @@
+{
+  "workflow_status": "success",
+  "timestamp": "2026-03-04T16:45:27.358Z",
+  "job_id": "JOB-2026-0849",
+  "customer_name": "Tony Marchetti",
+  "job_type": "Plumbing",
+  "job_total": 624.75,
+  "priority": "EMERGENCY",
+  "upsell_opportunity": true,
+  "upsell_note": "High-value job - consider maintenance contract upsell",
+  "actions_taken": [
+    "parse_validate",
+    "build_invoice",
+    "emergency_check",
+    "send_invoice_email",
+    "log_job_csv",
+    "wait_cooldown",
+    "send_review_request",
+    "upsell_check"
+  ],
+  "email_subject": "URGENT: Invoice - Plumbing Service - Tony Marchetti",
+  "review_subject": "How did we do today, Tony Marchetti?",
+  "csv_row": "March 4, 2026 | JOB-2026-0849 | Tony Marchetti | t.marchetti.test@mailinator.com | Plumbing | Dave Kim | 540 W 43rd St, New York, NY 10036 | 624.75 | Y | Y | Complete"
+}
