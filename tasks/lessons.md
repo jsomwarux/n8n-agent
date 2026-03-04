@@ -38,3 +38,19 @@
 16. - [construction-demo]: **Webhook responseMode "immediately" is not valid in n8n 2.10+**. Use `"onReceived"` instead. The valid values are: `onReceived`, `lastNode`, `responseNode`.
 
 17. - [construction-demo]: **n8n API PATCH /workflows/{id} does NOT update nodes** — it only updates top-level workflow fields (name, active, settings). To update nodes, delete the workflow and recreate it, or use the n8n editor UI.
+
+18. - [construction-demo]: **Gmail and Google Sheets nodes do NOT pass `$json` forward** — after either node executes, `$json` in all downstream nodes contains the API response (Gmail message metadata or Sheets row result), NOT the original workflow data. Always use explicit upstream references: `$('NodeName').item.json.field` for any node that runs after Gmail or Sheets.
+
+19. - [construction-demo]: **Wait nodes break `$json` data continuity** — after a Wait node resumes, `$json` from before the wait is not reliably available. Any node after a Wait node must reference upstream data explicitly with `$('NodeName').item.json.field` rather than `$json.field`.
+
+20. - [construction-demo]: **Gmail node `.split` error means `sendTo` received undefined** — this is caused by `$json.customer_email` being empty because a data-losing node (Gmail, Sheets, Wait) ran upstream. Fix: replace `$json.customer_email` with `$('UpstreamNode').item.json.customer_email` pointing to the last node that still had the original payload.
+
+21. - [construction-demo]: **Designate one pre-branch node as the canonical data source** — when a workflow has an IF branch (e.g. emergency vs standard), data on each branch path is independent. Pick one upstream node that runs before the branch (e.g. `Build Invoice Summary`) and reference ALL downstream data from it using `$('Build Invoice Summary').item.json.field`. Never assume `$json` has the full payload after a branch rejoins.
+
+22. - [construction-demo]: **Google Sheets "Forbidden" error = API not enabled OR credential issued before API was enabled** — fix order: (1) enable Google Sheets API in Google Cloud Console, (2) delete and reconnect the credential in n8n so the token is reissued with correct scopes. Re-authorizing alone is not enough if the API wasn't enabled when the token was first issued.
+
+23. - [construction-demo]: **Sheets `defineBelow` mapping silently writes empty for undefined expressions** — if `$json.field` is undefined, the column writes blank with no error. Only ternary expressions like `$json.flag ? 'Y' : 'N'` write a value because they evaluate to a default. This makes data flow bugs invisible in Sheets output. Validate all column expressions resolve to real values before deploying.
+
+24. - [construction-demo]: **n8n PUT /workflows/{id} body must contain ONLY: name, nodes, connections, settings, staticData** — sending any additional top-level fields (id, createdAt, updatedAt, active, etc.) returns "request/body must NOT have additional properties". Always strip the response object down to these five fields before PUT.
+
+25. - [construction-demo]: **Always fetch a fresh copy of the workflow immediately before making changes** — never reuse a previously saved local file. Each fix must start with a fresh API fetch, or earlier fixes already pushed will be silently overwritten by the stale local version.
