@@ -1,0 +1,64 @@
+{
+  "test_scenarios": [
+    {
+      "name": "Test 1 — CRITICAL (fraud flags + high loss)",
+      "description": "Commercial warehouse fire with multiple fraud indicators and $1.85M estimated loss. Should route to fraud investigator with CRITICAL priority.",
+      "expected_priority": "CRITICAL",
+      "expected_specialist": "fraud_investigator",
+      "payload": {
+        "claim_id": "CLM-2026-0847",
+        "policy_number": "POL-COM-88821",
+        "claimant_name": "Riverfront Properties LLC",
+        "claimant_email": "jtsomwaru+riverfront@gmail.com",
+        "date_of_loss": "2026-03-03",
+        "claim_type": "commercial_property",
+        "description": "Total loss of warehouse facility at 4400 Commerce Blvd following reported electrical fire. Building contained high-value electronics inventory. Claimant states fire suppression system was non-operational at time of loss. Third-party witness reports seeing claimant on premises 2 hours prior to fire with unknown individuals. Prior claim filed 18 months ago for similar loss at adjacent property under different LLC name. Estimated inventory loss $1.2M, structural damage $650K.",
+        "estimated_loss": "$1,850,000",
+        "location": "Newark, NJ",
+        "policy_type": "commercial_property"
+      }
+    },
+    {
+      "name": "Test 2 — HIGH (workers comp, multiple parties)",
+      "description": "Construction site injury with surgery required, OSHA involvement, and potential equipment liability. Should route to workers comp specialist with HIGH priority.",
+      "expected_priority": "HIGH",
+      "expected_specialist": "workers_comp_specialist",
+      "payload": {
+        "claim_id": "CLM-2026-0848",
+        "policy_number": "POL-BIZ-44512",
+        "claimant_name": "Sullivan Construction Group",
+        "claimant_email": "jtsomwaru+sullivan@gmail.com",
+        "date_of_loss": "2026-03-02",
+        "claim_type": "workers_compensation",
+        "description": "Worker sustained crush injury to right hand and wrist from equipment malfunction on active job site. Incident occurred at 14th floor construction site on West 57th St, Manhattan. Worker transported to Bellevue Hospital, surgery scheduled. Three additional workers witnessed the incident. OSHA notification filed. Equipment (Titan Pro hydraulic lift, serial #HTL-9923) has been quarantined pending inspection. Worker employed 3 years, no prior injury claims. Medical prognosis: 8–12 weeks recovery, possible permanent partial disability.",
+        "estimated_loss": "$285,000",
+        "location": "Manhattan, NY",
+        "policy_type": "workers_compensation"
+      }
+    },
+    {
+      "name": "Test 3 — STANDARD (residential, straightforward)",
+      "description": "Residential water damage from burst pipe with complete documentation. Should route to standard queue with STANDARD priority.",
+      "expected_priority": "STANDARD",
+      "expected_specialist": "property_adjuster",
+      "payload": {
+        "claim_id": "CLM-2026-0849",
+        "policy_number": "POL-HOM-77634",
+        "claimant_name": "James Whitfield",
+        "claimant_email": "jtsomwaru+james.whitfield@gmail.com",
+        "date_of_loss": "2026-03-01",
+        "claim_type": "homeowners",
+        "description": "Water damage to finished basement following burst pipe in utility room. Damage includes flooring (approx 800 sq ft), drywall, and personal property (furniture, electronics). Plumber already repaired the pipe. Photos provided. No structural damage to foundation. Single-family residence, primary insured is sole claimant. HOA has been notified per community rules.",
+        "estimated_loss": "$18,500",
+        "location": "Paramus, NJ",
+        "policy_type": "homeowners"
+      }
+    }
+  ],
+  "curl_commands": {
+    "test_1_critical": "curl -X POST http://localhost:5678/webhook/new-claim -H 'Content-Type: application/json' -d '{\"claim_id\":\"CLM-2026-0847\",\"policy_number\":\"POL-COM-88821\",\"claimant_name\":\"Riverfront Properties LLC\",\"claimant_email\":\"jtsomwaru+riverfront@gmail.com\",\"date_of_loss\":\"2026-03-03\",\"claim_type\":\"commercial_property\",\"description\":\"Total loss of warehouse facility at 4400 Commerce Blvd following reported electrical fire. Building contained high-value electronics inventory. Claimant states fire suppression system was non-operational at time of loss. Third-party witness reports seeing claimant on premises 2 hours prior to fire with unknown individuals. Prior claim filed 18 months ago for similar loss at adjacent property under different LLC name. Estimated inventory loss $1.2M, structural damage $650K.\",\"estimated_loss\":\"$1,850,000\",\"location\":\"Newark, NJ\",\"policy_type\":\"commercial_property\"}'",
+    "test_2_high": "curl -X POST http://localhost:5678/webhook/new-claim -H 'Content-Type: application/json' -d '{\"claim_id\":\"CLM-2026-0848\",\"policy_number\":\"POL-BIZ-44512\",\"claimant_name\":\"Sullivan Construction Group\",\"claimant_email\":\"jtsomwaru+sullivan@gmail.com\",\"date_of_loss\":\"2026-03-02\",\"claim_type\":\"workers_compensation\",\"description\":\"Worker sustained crush injury to right hand and wrist from equipment malfunction on active job site. Incident occurred at 14th floor construction site on West 57th St, Manhattan. Worker transported to Bellevue Hospital, surgery scheduled. Three additional workers witnessed the incident. OSHA notification filed. Equipment (Titan Pro hydraulic lift, serial #HTL-9923) has been quarantined pending inspection. Worker employed 3 years, no prior injury claims. Medical prognosis: 8–12 weeks recovery, possible permanent partial disability.\",\"estimated_loss\":\"$285,000\",\"location\":\"Manhattan, NY\",\"policy_type\":\"workers_compensation\"}'",
+    "test_3_standard": "curl -X POST http://localhost:5678/webhook/new-claim -H 'Content-Type: application/json' -d '{\"claim_id\":\"CLM-2026-0849\",\"policy_number\":\"POL-HOM-77634\",\"claimant_name\":\"James Whitfield\",\"claimant_email\":\"jtsomwaru+james.whitfield@gmail.com\",\"date_of_loss\":\"2026-03-01\",\"claim_type\":\"homeowners\",\"description\":\"Water damage to finished basement following burst pipe in utility room. Damage includes flooring (approx 800 sq ft), drywall, and personal property (furniture, electronics). Plumber already repaired the pipe. Photos provided. No structural damage to foundation. Single-family residence, primary insured is sole claimant. HOA has been notified per community rules.\",\"estimated_loss\":\"$18,500\",\"location\":\"Paramus, NJ\",\"policy_type\":\"homeowners\"}'",
+    "note": "Replace localhost:5678 with your n8n instance URL if running elsewhere"
+  }
+}

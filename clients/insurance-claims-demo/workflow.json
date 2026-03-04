@@ -1,0 +1,582 @@
+{
+  "name": "AI Insurance Claims Triage & Document Extraction — Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-claim",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-new-claim",
+      "name": "Webhook: New Claim",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "new-claim"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\n\n// Sanitize and standardize raw claim fields\nconst normalized = {\n  claim_id: (input.claim_id || 'CLM-' + Date.now()).toString().trim().toUpperCase(),\n  policy_number: (input.policy_number || 'UNKNOWN').toString().trim().toUpperCase(),\n  claimant_name: (input.claimant_name || 'Unknown Claimant').toString().trim(),\n  claimant_email: (input.claimant_email || '').toString().trim().toLowerCase(),\n  date_of_loss: input.date_of_loss || new Date().toISOString().split('T')[0],\n  claim_type: (input.claim_type || 'other').toString().trim().toLowerCase().replace(/\\s+/g, '_'),\n  description: (input.description || 'No description provided.').toString().trim(),\n  estimated_loss: (input.estimated_loss || '$0').toString().trim(),\n  location: (input.location || 'Unknown').toString().trim(),\n  policy_type: (input.policy_type || input.claim_type || 'other').toString().trim().toLowerCase(),\n  received_at: new Date().toISOString()\n};\n\nreturn [{ json: normalized }];"
+      },
+      "id": "normalize-claim-input",
+      "name": "Normalize Claim Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const claim = $('Normalize Claim Input').item.json;\n\nconst prompt = `You are an expert insurance claims analyst. Analyze the following claim submission and return a structured JSON response.\n\nCLAIM SUBMISSION:\n---\nClaim ID: ${claim.claim_id}\nPolicy Number: ${claim.policy_number}\nClaimant: ${claim.claimant_name}\nDate of Loss: ${claim.date_of_loss}\nClaim Type: ${claim.claim_type}\nDescription: ${claim.description}\nEstimated Loss: ${claim.estimated_loss}\nLocation: ${claim.location}\n---\n\nReturn ONLY valid JSON with this exact structure:\n{\n  \"priority\": \"CRITICAL\" | \"HIGH\" | \"STANDARD\" | \"LOW\",\n  \"claim_category\": \"property_damage\" | \"liability\" | \"auto\" | \"workers_comp\" | \"commercial\" | \"other\",\n  \"extracted_fields\": {\n    \"primary_cause\": \"string — one line root cause\",\n    \"affected_parties\": \"string — who is impacted\",\n    \"estimated_severity\": \"string — dollar range or severity descriptor\",\n    \"coverage_flags\": [\"array of coverage areas that likely apply\"],\n    \"red_flags\": [\"array of fraud indicators or unusual elements, empty if none\"],\n    \"missing_info\": [\"array of critical missing fields needed to process\"]\n  },\n  \"recommended_specialist\": \"property_adjuster\" | \"liability_specialist\" | \"auto_adjuster\" | \"workers_comp_specialist\" | \"fraud_investigator\" | \"senior_adjuster\",\n  \"sla_hours\": 2 | 4 | 8 | 24 | 48,\n  \"confidence\": 0.0–1.0,\n  \"reasoning\": \"2–3 sentence explanation of priority decision and key risk factors\",\n  \"claimant_message\": \"1–2 sentence professional acknowledgment message for the claimant — empathetic, clear, no legal admissions\"\n}\n\nPriority rules:\n- CRITICAL: Estimated loss >$500K, injury claims, active liability exposure, fraud flags\n- HIGH: Estimated loss $100K–$500K, commercial property, multiple parties\n- STANDARD: Residential property <$100K, single claimant, clear documentation\n- LOW: Minor claims <$10K, straightforward, complete documentation`;\n\nreturn [{ json: { prompt } }];"
+      },
+      "id": "build-extraction-prompt",
+      "name": "Build Extraction Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://jtsomwaru.com"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"anthropic/claude-3.5-sonnet\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": $('Build Extraction Prompt').item.json.prompt }] }) }}",
+        "options": {}
+      },
+      "id": "claude-extract-triage",
+      "name": "Claude: Extract & Triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $('Claude: Extract & Triage').item.json;\nconst content = response.choices?.[0]?.message?.content || '';\n\nlet parsed;\ntry {\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);\n} catch(e) {\n  parsed = {\n    priority: 'STANDARD',\n    claim_category: 'other',\n    extracted_fields: {\n      primary_cause: 'Parse error — manual review required',\n      affected_parties: 'Unknown',\n      estimated_severity: 'Unknown',\n      coverage_flags: [],\n      red_flags: [],\n      missing_info: ['AI parse failed — full manual review needed']\n    },\n    recommended_specialist: 'senior_adjuster',\n    sla_hours: 8,\n    confidence: 0.0,\n    reasoning: 'AI extraction failed. Routing to senior adjuster for manual triage.',\n    claimant_message: 'We have received your claim and a specialist will be in touch within 24 hours.'\n  };\n}\n\n// Merge with original claim data\nconst claim = $('Normalize Claim Input').item.json;\n\nreturn [{\n  json: {\n    ...claim,\n    ...parsed,\n    claim_id: claim.claim_id,\n    processing_timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "parse-triage-result",
+      "name": "Parse Triage Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-high",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "HIGH",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-critical",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "CRITICAL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "high-priority-check",
+      "name": "High Priority?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Parse Triage Result').item.json;\nconst specialistMap = {\n  'property_adjuster': { name: 'Marcus Webb', email: 'jtsomwaru+marcus.webb@gmail.com', queue: 'Property Claims' },\n  'liability_specialist': { name: 'Diana Torres', email: 'jtsomwaru+diana.torres@gmail.com', queue: 'Liability' },\n  'auto_adjuster': { name: 'Kevin Park', email: 'jtsomwaru+kevin.park@gmail.com', queue: 'Auto Claims' },\n  'workers_comp_specialist': { name: 'Sandra Mills', email: 'jtsomwaru+sandra.mills@gmail.com', queue: 'Workers Comp' },\n  'fraud_investigator': { name: 'Victor Chen', email: 'jtsomwaru+victor.chen@gmail.com', queue: 'SIU — Fraud' },\n  'senior_adjuster': { name: 'Patricia Okafor', email: 'jtsomwaru+patricia.okafor@gmail.com', queue: 'Senior Review' }\n};\n\nconst specialist = specialistMap[data.recommended_specialist] || specialistMap['senior_adjuster'];\n\nreturn [{\n  json: {\n    ...data,\n    assigned_specialist_name: specialist.name,\n    assigned_specialist_email: specialist.email,\n    assigned_queue: specialist.queue\n  }\n}];"
+      },
+      "id": "assign-specialist",
+      "name": "Assign Specialist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"text\": \"🚨 *\" + $('Assign Specialist').item.json.priority + \" CLAIM* — #\" + $('Assign Specialist').item.json.claim_id + \"\\n*Claimant:* \" + $('Assign Specialist').item.json.claimant_name + \" | *Type:* \" + $('Assign Specialist').item.json.claim_category + \"\\n*Est. Loss:* \" + $('Assign Specialist').item.json.estimated_loss + \" | *SLA:* \" + $('Assign Specialist').item.json.sla_hours + \"h\\n*Assigned to:* \" + $('Assign Specialist').item.json.assigned_specialist_name + \" (\" + $('Assign Specialist').item.json.assigned_queue + \")\\n*AI Reasoning:* \" + ($('Assign Specialist').item.json.reasoning || '').substring(0, 200) + \"\\n*Red Flags:* \" + (($('Assign Specialist').item.json.extracted_fields?.red_flags || []).join(', ') || 'None') }) }}",
+        "options": {}
+      },
+      "id": "send-urgent-alert",
+      "name": "Send Urgent Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 200],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Assign Specialist').item.json.assigned_specialist_email }}",
+        "subject": "={{ '🚨 [' + $('Assign Specialist').item.json.priority + '] New Claim #' + $('Assign Specialist').item.json.claim_id + ' — ' + $('Assign Specialist').item.json.claim_category.replace('_',' ').toUpperCase() }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">\n  <div style=\"background: {{ $('Assign Specialist').item.json.priority === 'CRITICAL' ? '#dc2626' : '#f59e0b' }}; color: white; padding: 16px; border-radius: 8px 8px 0 0;\">\n    <h1 style=\"margin: 0; font-size: 20px;\">{{ $('Assign Specialist').item.json.priority }} Priority Claim</h1>\n    <p style=\"margin: 8px 0 0 0; opacity: 0.9;\">SLA Deadline: {{ new Date(Date.now() + $('Assign Specialist').item.json.sla_hours * 3600000).toLocaleString() }}</p>\n  </div>\n  \n  <div style=\"background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb;\">\n    <table style=\"width: 100%; border-collapse: collapse;\">\n      <tr><td style=\"padding: 8px 0; font-weight: bold; width: 140px;\">Claim ID:</td><td>{{ $('Assign Specialist').item.json.claim_id }}</td></tr>\n      <tr><td style=\"padding: 8px 0; font-weight: bold;\">Policy #:</td><td>{{ $('Assign Specialist').item.json.policy_number }}</td></tr>\n      <tr><td style=\"padding: 8px 0; font-weight: bold;\">Claimant:</td><td>{{ $('Assign Specialist').item.json.claimant_name }}</td></tr>\n      <tr><td style=\"padding: 8px 0; font-weight: bold;\">Date of Loss:</td><td>{{ $('Assign Specialist').item.json.date_of_loss }}</td></tr>\n      <tr><td style=\"padding: 8px 0; font-weight: bold;\">Estimated Loss:</td><td style=\"color: #dc2626; font-weight: bold;\">{{ $('Assign Specialist').item.json.estimated_loss }}</td></tr>\n      <tr><td style=\"padding: 8px 0; font-weight: bold;\">Location:</td><td>{{ $('Assign Specialist').item.json.location }}</td></tr>\n    </table>\n  </div>\n\n  <div style=\"background: white; padding: 20px; border: 1px solid #e5e7eb; border-top: none;\">\n    <h2 style=\"margin: 0 0 12px 0; font-size: 16px; color: #374151;\">AI-Extracted Analysis</h2>\n    <p style=\"margin: 0 0 8px 0;\"><strong>Primary Cause:</strong> {{ $('Assign Specialist').item.json.extracted_fields?.primary_cause || 'Not determined' }}</p>\n    <p style=\"margin: 0 0 8px 0;\"><strong>Affected Parties:</strong> {{ $('Assign Specialist').item.json.extracted_fields?.affected_parties || 'Unknown' }}</p>\n    <p style=\"margin: 0 0 8px 0;\"><strong>Estimated Severity:</strong> {{ $('Assign Specialist').item.json.extracted_fields?.estimated_severity || 'Unknown' }}</p>\n    \n    <div style=\"margin: 16px 0;\">\n      <strong>Coverage Flags:</strong>\n      <ul style=\"margin: 4px 0; padding-left: 20px;\">{{ ($('Assign Specialist').item.json.extracted_fields?.coverage_flags || []).map(f => '<li>' + f + '</li>').join('') || '<li>None identified</li>' }}</ul>\n    </div>\n\n    {{ ($('Assign Specialist').item.json.extracted_fields?.red_flags || []).length > 0 ? '<div style=\"background: #fef2f2; border: 1px solid #fecaca; padding: 12px; border-radius: 4px; margin: 16px 0;\"><strong style=\"color: #dc2626;\">⚠️ Red Flags:</strong><ul style=\"margin: 4px 0; padding-left: 20px; color: #991b1b;\">' + $('Assign Specialist').item.json.extracted_fields.red_flags.map(f => '<li>' + f + '</li>').join('') + '</ul></div>' : '' }}\n\n    {{ ($('Assign Specialist').item.json.extracted_fields?.missing_info || []).length > 0 ? '<div style=\"background: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 4px; margin: 16px 0;\"><strong style=\"color: #92400e;\">📋 Missing Information:</strong><ul style=\"margin: 4px 0; padding-left: 20px;\">' + $('Assign Specialist').item.json.extracted_fields.missing_info.map(f => '<li>' + f + '</li>').join('') + '</ul></div>' : '' }}\n\n    <div style=\"background: #f3f4f6; padding: 12px; border-radius: 4px; margin-top: 16px;\">\n      <p style=\"margin: 0 0 4px 0;\"><strong>Confidence Score:</strong> {{ Math.round(($('Assign Specialist').item.json.confidence || 0) * 100) }}%</p>\n      <p style=\"margin: 0; font-style: italic; color: #6b7280;\">{{ $('Assign Specialist').item.json.reasoning || 'No reasoning provided.' }}</p>\n    </div>\n  </div>\n\n  <div style=\"background: #1f2937; color: white; padding: 16px; border-radius: 0 0 8px 8px; text-align: center;\">\n    <p style=\"margin: 0;\"><strong>Assigned to:</strong> {{ $('Assign Specialist').item.json.assigned_specialist_name }} — {{ $('Assign Specialist').item.json.assigned_queue }}</p>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "email-adjuster-notification",
+      "name": "Email: Adjuster Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2160, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Claims Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ new Date().toISOString().split('T')[0] }}",
+            "Claim ID": "={{ $('Assign Specialist').item.json.claim_id }}",
+            "Claimant": "={{ $('Assign Specialist').item.json.claimant_name }}",
+            "Claim Type": "={{ $('Assign Specialist').item.json.claim_category }}",
+            "Priority": "={{ $('Assign Specialist').item.json.priority }}",
+            "Est. Loss": "={{ $('Assign Specialist').item.json.estimated_loss }}",
+            "SLA Hours": "={{ $('Assign Specialist').item.json.sla_hours }}",
+            "Assigned To": "={{ $('Assign Specialist').item.json.assigned_specialist_name }}",
+            "Queue": "={{ $('Assign Specialist').item.json.assigned_queue }}",
+            "Red Flags": "={{ ($('Assign Specialist').item.json.extracted_fields?.red_flags || []).join(', ') || 'None' }}",
+            "Confidence": "={{ $('Assign Specialist').item.json.confidence }}",
+            "Reasoning": "={{ ($('Assign Specialist').item.json.reasoning || '').substring(0, 250) }}",
+            "Processed At": "={{ $('Assign Specialist').item.json.processing_timestamp }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-to-sheets-high",
+      "name": "Log to Sheets (High)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2400, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Assign Specialist').item.json;\n\nconst summary = {\n  status: 'processed',\n  claim_id: data.claim_id,\n  priority: data.priority,\n  claim_category: data.claim_category,\n  claimant_name: data.claimant_name,\n  estimated_loss: data.estimated_loss,\n  assigned_to: data.assigned_specialist_name,\n  queue: data.assigned_queue,\n  sla_hours: data.sla_hours,\n  confidence: data.confidence,\n  reasoning: data.reasoning,\n  red_flags: data.extracted_fields?.red_flags || [],\n  processing_timestamp: data.processing_timestamp,\n  message: `Claim #${data.claim_id} triaged as ${data.priority}. Assigned to ${data.assigned_specialist_name} (${data.assigned_queue}). SLA: ${data.sla_hours} hours.`\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "claim-summary-high",
+      "name": "Claim Summary (High)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Parse Triage Result').item.json;\n\nreturn [{\n  json: {\n    ...data,\n    assigned_specialist_name: 'Standard Queue',\n    assigned_specialist_email: null,\n    assigned_queue: 'Standard Processing'\n  }\n}];"
+      },
+      "id": "standard-queue",
+      "name": "Standard Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"text\": \"📋 *New Claim* — #\" + $('Parse Triage Result').item.json.claim_id + \" (\" + $('Parse Triage Result').item.json.priority + \")\\n*Claimant:* \" + $('Parse Triage Result').item.json.claimant_name + \" | *Type:* \" + $('Parse Triage Result').item.json.claim_category + \"\\n*Est. Loss:* \" + $('Parse Triage Result').item.json.estimated_loss + \"\\n*Queue:* Standard Processing | *SLA:* \" + $('Parse Triage Result').item.json.sla_hours + \"h\\n*Summary:* \" + ($('Parse Triage Result').item.json.reasoning || '').substring(0, 150) }) }}",
+        "options": {}
+      },
+      "id": "send-routine-alert",
+      "name": "Send Routine Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 400],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Parse Triage Result').item.json.claimant_email }}",
+        "subject": "={{ 'Claim #' + $('Parse Triage Result').item.json.claim_id + ' — Received & In Review' }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">\n  <div style=\"background: #2563eb; color: white; padding: 24px; border-radius: 8px 8px 0 0; text-align: center;\">\n    <h1 style=\"margin: 0; font-size: 24px;\">Claim Received</h1>\n  </div>\n  \n  <div style=\"background: white; padding: 24px; border: 1px solid #e5e7eb;\">\n    <p style=\"margin: 0 0 16px 0; font-size: 16px;\">Dear {{ $('Parse Triage Result').item.json.claimant_name }},</p>\n    \n    <p style=\"margin: 0 0 16px 0;\">{{ $('Parse Triage Result').item.json.claimant_message }}</p>\n    \n    <div style=\"background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;\">\n      <p style=\"margin: 0 0 8px 0;\"><strong>Claim Reference:</strong> {{ $('Parse Triage Result').item.json.claim_id }}</p>\n      <p style=\"margin: 0 0 8px 0;\"><strong>Date of Loss:</strong> {{ $('Parse Triage Result').item.json.date_of_loss }}</p>\n      <p style=\"margin: 0;\"><strong>Expected Response:</strong> Within {{ $('Parse Triage Result').item.json.sla_hours }} hours</p>\n    </div>\n    \n    <p style=\"margin: 0 0 16px 0;\">Please keep this reference number for your records. You can reply to this email if you have additional information to provide.</p>\n    \n    <p style=\"margin: 0;\">Sincerely,<br><strong>Claims Processing Team</strong></p>\n  </div>\n  \n  <div style=\"background: #f9fafb; padding: 16px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; text-align: center; font-size: 12px; color: #6b7280;\">\n    <p style=\"margin: 0;\">This is an automated message. Please do not reply directly to this email.</p>\n  </div>\n</div>",
+        "options": {}
+      },
+      "id": "email-claimant-acknowledgment",
+      "name": "Email: Claimant Acknowledgment",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2160, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Claims Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ new Date().toISOString().split('T')[0] }}",
+            "Claim ID": "={{ $('Parse Triage Result').item.json.claim_id }}",
+            "Claimant": "={{ $('Parse Triage Result').item.json.claimant_name }}",
+            "Claim Type": "={{ $('Parse Triage Result').item.json.claim_category }}",
+            "Priority": "={{ $('Parse Triage Result').item.json.priority }}",
+            "Est. Loss": "={{ $('Parse Triage Result').item.json.estimated_loss }}",
+            "SLA Hours": "={{ $('Parse Triage Result').item.json.sla_hours }}",
+            "Assigned To": "={{ 'Standard Queue' }}",
+            "Queue": "={{ 'Standard Processing' }}",
+            "Red Flags": "={{ ($('Parse Triage Result').item.json.extracted_fields?.red_flags || []).join(', ') || 'None' }}",
+            "Confidence": "={{ $('Parse Triage Result').item.json.confidence }}",
+            "Reasoning": "={{ ($('Parse Triage Result').item.json.reasoning || '').substring(0, 250) }}",
+            "Processed At": "={{ $('Parse Triage Result').item.json.processing_timestamp }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-to-sheets-standard",
+      "name": "Log to Sheets (Standard)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2400, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Parse Triage Result').item.json;\n\nconst summary = {\n  status: 'processed',\n  claim_id: data.claim_id,\n  priority: data.priority,\n  claim_category: data.claim_category,\n  claimant_name: data.claimant_name,\n  estimated_loss: data.estimated_loss,\n  assigned_to: 'Standard Queue',\n  queue: 'Standard Processing',\n  sla_hours: data.sla_hours,\n  confidence: data.confidence,\n  reasoning: data.reasoning,\n  red_flags: data.extracted_fields?.red_flags || [],\n  processing_timestamp: data.processing_timestamp,\n  message: `Claim #${data.claim_id} triaged as ${data.priority}. Queued for standard processing. SLA: ${data.sla_hours} hours.`\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "claim-summary-standard",
+      "name": "Claim Summary (Standard)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 400]
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.item.json;\nreturn [{ \n  json: { \n    error_message: error.message || JSON.stringify(error) || 'Unknown error', \n    timestamp: new Date().toISOString(), \n    workflow: 'AI Insurance Claims Triage' \n  } \n}];"
+      },
+      "id": "log-error-details",
+      "name": "Log Error Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"text\": \"❌ *Claims Workflow Error*\\n\" + $('Log Error Details').item.json.error_message + \"\\n*Timestamp:* \" + $('Log Error Details').item.json.timestamp }) }}",
+        "options": {}
+      },
+      "id": "error-alert",
+      "name": "Error Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 600],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook: New Claim": {
+      "main": [
+        [
+          {
+            "node": "Normalize Claim Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Claim Input": {
+      "main": [
+        [
+          {
+            "node": "Build Extraction Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Extraction Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude: Extract & Triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Extract & Triage": {
+      "main": [
+        [
+          {
+            "node": "Parse Triage Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Triage Result": {
+      "main": [
+        [
+          {
+            "node": "High Priority?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High Priority?": {
+      "main": [
+        [
+          {
+            "node": "Assign Specialist",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Standard Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Specialist": {
+      "main": [
+        [
+          {
+            "node": "Send Urgent Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Urgent Alert": {
+      "main": [
+        [
+          {
+            "node": "Email: Adjuster Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Adjuster Notification": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets (High)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets (High)": {
+      "main": [
+        [
+          {
+            "node": "Claim Summary (High)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Standard Queue": {
+      "main": [
+        [
+          {
+            "node": "Send Routine Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Routine Alert": {
+      "main": [
+        [
+          {
+            "node": "Email: Claimant Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Claimant Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets (Standard)": {
+      "main": [
+        [
+          {
+            "node": "Claim Summary (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Details": {
+      "main": [
+        [
+          {
+            "node": "Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null
+}
