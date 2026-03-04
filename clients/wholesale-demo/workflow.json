@@ -1,0 +1,514 @@
+{
+  "name": "AI Inventory Reorder & Supplier Notification",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook: Trigger Reorder Check",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "inventory-reorder",
+      "parameters": {
+        "path": "inventory-reorder",
+        "httpMethod": "POST",
+        "responseMode": "onReceived"
+      }
+    },
+    {
+      "id": "load-inventory",
+      "name": "Load Inventory Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Load mock inventory data for wholesale distributor demo\nconst inventory = [\n  { sku: \"SAF-001\", name: \"Hard Hats (Class E)\", category: \"Safety\", current_stock: 12, reorder_threshold: 25, max_stock: 100, unit_cost: 18.50, supplier: \"SafeGuard Industrial\", supplier_email: \"jtsomwaru+supplier1@gmail.com\" },\n  { sku: \"SAF-002\", name: \"Cut-Resistant Gloves (L)\", category: \"Safety\", current_stock: 8, reorder_threshold: 30, max_stock: 120, unit_cost: 12.75, supplier: \"SafeGuard Industrial\", supplier_email: \"jtsomwaru+supplier1@gmail.com\" },\n  { sku: \"SAF-003\", name: \"Safety Vests (Hi-Vis Orange)\", category: \"Safety\", current_stock: 45, reorder_threshold: 20, max_stock: 80, unit_cost: 8.25, supplier: \"SafeGuard Industrial\", supplier_email: \"jtsomwaru+supplier1@gmail.com\" },\n  { sku: \"SAF-004\", name: \"Safety Glasses (ANSI Z87)\", category: \"Safety\", current_stock: 6, reorder_threshold: 40, max_stock: 150, unit_cost: 4.50, supplier: \"SafeGuard Industrial\", supplier_email: \"jtsomwaru+supplier1@gmail.com\" },\n  { sku: \"PKG-001\", name: \"Stretch Wrap Film (18\\\")\", category: \"Packaging\", current_stock: 3, reorder_threshold: 10, max_stock: 50, unit_cost: 32.00, supplier: \"Metro Packaging Co\", supplier_email: \"jtsomwaru+supplier2@gmail.com\" },\n  { sku: \"PKG-002\", name: \"Shipping Tape (2\\\" x 110 yd)\", category: \"Packaging\", current_stock: 22, reorder_threshold: 15, max_stock: 60, unit_cost: 3.85, supplier: \"Metro Packaging Co\", supplier_email: \"jtsomwaru+supplier2@gmail.com\" },\n  { sku: \"PKG-003\", name: \"Corrugated Boxes (12x12x12)\", category: \"Packaging\", current_stock: 4, reorder_threshold: 20, max_stock: 100, unit_cost: 1.95, supplier: \"Metro Packaging Co\", supplier_email: \"jtsomwaru+supplier2@gmail.com\" },\n  { sku: \"CLN-001\", name: \"Industrial Degreaser (Gal)\", category: \"Cleaning\", current_stock: 15, reorder_threshold: 10, max_stock: 40, unit_cost: 14.50, supplier: \"CleanPro Supplies\", supplier_email: \"jtsomwaru+supplier3@gmail.com\" },\n  { sku: \"CLN-002\", name: \"Microfiber Mop Heads\", category: \"Cleaning\", current_stock: 2, reorder_threshold: 12, max_stock: 48, unit_cost: 6.75, supplier: \"CleanPro Supplies\", supplier_email: \"jtsomwaru+supplier3@gmail.com\" },\n  { sku: \"CLN-003\", name: \"Paper Towels (Case/30 rolls)\", category: \"Cleaning\", current_stock: 8, reorder_threshold: 8, max_stock: 32, unit_cost: 42.00, supplier: \"CleanPro Supplies\", supplier_email: \"jtsomwaru+supplier3@gmail.com\" },\n  { sku: \"PWR-001\", name: \"Drill Bits Set (29-pc)\", category: \"Tools\", current_stock: 18, reorder_threshold: 10, max_stock: 40, unit_cost: 28.50, supplier: \"ProTool Wholesale\", supplier_email: \"jtsomwaru+supplier4@gmail.com\" },\n  { sku: \"PWR-002\", name: \"Reciprocating Saw Blades (10-pk)\", category: \"Tools\", current_stock: 5, reorder_threshold: 15, max_stock: 60, unit_cost: 22.00, supplier: \"ProTool Wholesale\", supplier_email: \"jtsomwaru+supplier4@gmail.com\" },\n  { sku: \"PWR-003\", name: \"Extension Cords (50ft, 12 AWG)\", category: \"Tools\", current_stock: 9, reorder_threshold: 8, max_stock: 30, unit_cost: 34.00, supplier: \"ProTool Wholesale\", supplier_email: \"jtsomwaru+supplier4@gmail.com\" },\n  { sku: \"ELC-001\", name: \"Wire Connectors (100-pk)\", category: \"Electrical\", current_stock: 1, reorder_threshold: 20, max_stock: 80, unit_cost: 8.95, supplier: \"NYC Electric Supply\", supplier_email: \"jtsomwaru+supplier5@gmail.com\" },\n  { sku: \"ELC-002\", name: \"Electrical Tape (10-pk)\", category: \"Electrical\", current_stock: 14, reorder_threshold: 10, max_stock: 40, unit_cost: 11.50, supplier: \"NYC Electric Supply\", supplier_email: \"jtsomwaru+supplier5@gmail.com\" }\n];\n\nconst triggerData = $input.first().json;\n\nreturn [{\n  json: {\n    trigger: triggerData.trigger || 'manual',\n    triggered_by: triggerData.triggered_by || 'api',\n    date: triggerData.date || new Date().toISOString().split('T')[0],\n    inventory: inventory,\n    total_skus: inventory.length\n  }\n}];"
+      }
+    },
+    {
+      "id": "build-ai-prompt",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Build the Claude AI prompt for inventory analysis\nconst data = $input.first().json;\nconst inventory = data.inventory;\n\n// Format inventory table for Claude\nlet inventoryTable = 'Current Inventory Status:\\n';\ninventoryTable += '| SKU | Name | Category | Stock | Threshold | Gap | Supplier |\\n';\ninventoryTable += '|-----|------|----------|-------|-----------|-----|----------|\\n';\n\nfor (const item of inventory) {\n  const gap = item.current_stock - item.reorder_threshold;\n  const gapStr = gap < 0 ? gap.toString() : '+' + gap;\n  inventoryTable += `| ${item.sku} | ${item.name} | ${item.category} | ${item.current_stock} | ${item.reorder_threshold} | ${gapStr} | ${item.supplier} |\\n`;\n}\n\nconst systemPrompt = 'You are an inventory management AI for a wholesale distributor. Analyze the provided inventory data and identify items that need to be reordered. Return ONLY valid JSON \u2014 no markdown, no explanation, no code blocks, just the raw JSON object.';\n\nconst userPrompt = inventoryTable + `\n\nAnalyze this inventory and identify items AT or BELOW their reorder threshold (current_stock <= reorder_threshold).\n\nUrgency rules:\n- stock = 0-25% of threshold \u2192 critical\n- stock = 26-50% of threshold \u2192 high  \n- stock = 51-100% of threshold \u2192 medium\n- exactly at threshold \u2192 medium\n\nOrder quantity: max_stock minus current_stock\n\nReturn a JSON object with this exact structure:\n{\n  \"analysis_summary\": \"2-3 sentence executive summary\",\n  \"reorder_items\": [\n    {\n      \"sku\": \"\",\n      \"name\": \"\",\n      \"category\": \"\",\n      \"current_stock\": 0,\n      \"reorder_threshold\": 0,\n      \"suggested_order_qty\": 0,\n      \"urgency\": \"critical|high|medium\",\n      \"unit_cost\": 0,\n      \"estimated_po_value\": 0,\n      \"supplier\": \"\",\n      \"supplier_email\": \"\",\n      \"reasoning\": \"\"\n    }\n  ],\n  \"reorder_count\": 0,\n  \"total_po_value\": 0,\n  \"critical_count\": 0\n}`;\n\nconst requestBody = {\n  model: 'anthropic/claude-3.5-sonnet',\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: userPrompt }\n  ],\n  max_tokens: 4000,\n  temperature: 0.1\n};\n\nreturn [{\n  json: {\n    ...data,\n    ai_request_body: requestBody\n  }\n}];"
+      }
+    },
+    {
+      "id": "claude-analyze",
+      "name": "Claude: Analyze Inventory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build AI Prompt').item.json.ai_request_body) }}",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Parse Claude's JSON response and extract reorder items\nconst upstreamData = $('Build AI Prompt').item.json;\nconst aiResponse = $input.first().json;\n\nlet analysis;\ntry {\n  // Extract content from OpenRouter response\n  const content = aiResponse.choices && aiResponse.choices[0] && aiResponse.choices[0].message && aiResponse.choices[0].message.content\n    ? aiResponse.choices[0].message.content\n    : '';\n  \n  // Clean any markdown code blocks if present\n  let cleanContent = content.trim();\n  if (cleanContent.startsWith('```json')) {\n    cleanContent = cleanContent.slice(7);\n  } else if (cleanContent.startsWith('```')) {\n    cleanContent = cleanContent.slice(3);\n  }\n  if (cleanContent.endsWith('```')) {\n    cleanContent = cleanContent.slice(0, -3);\n  }\n  cleanContent = cleanContent.trim();\n  \n  analysis = JSON.parse(cleanContent);\n} catch (e) {\n  // Fallback if parsing fails\n  analysis = {\n    analysis_summary: 'Error parsing AI response',\n    reorder_items: [],\n    reorder_count: 0,\n    total_po_value: 0,\n    critical_count: 0,\n    parse_error: e.message\n  };\n}\n\n// Group items by supplier for PO generation\nconst itemsBySupplier = {};\nif (analysis.reorder_items && Array.isArray(analysis.reorder_items)) {\n  for (const item of analysis.reorder_items) {\n    const supplier = item.supplier || 'Unknown';\n    if (!itemsBySupplier[supplier]) {\n      itemsBySupplier[supplier] = {\n        supplier: supplier,\n        supplier_email: item.supplier_email || '',\n        items: [],\n        subtotal: 0\n      };\n    }\n    itemsBySupplier[supplier].items.push(item);\n    itemsBySupplier[supplier].subtotal += item.estimated_po_value || 0;\n  }\n}\n\nreturn [{\n  json: {\n    trigger: upstreamData.trigger,\n    triggered_by: upstreamData.triggered_by,\n    date: upstreamData.date,\n    total_skus: upstreamData.total_skus,\n    analysis_summary: analysis.analysis_summary,\n    reorder_items: analysis.reorder_items || [],\n    reorder_count: analysis.reorder_count || 0,\n    total_po_value: analysis.total_po_value || 0,\n    critical_count: analysis.critical_count || 0,\n    items_by_supplier: itemsBySupplier,\n    supplier_count: Object.keys(itemsBySupplier).length,\n    ai_model: 'claude-3.5-sonnet',\n    ai_tokens_used: aiResponse.usage ? aiResponse.usage.total_tokens : 0\n  }\n}];"
+      }
+    },
+    {
+      "id": "check-reorders",
+      "name": "Any Reorders Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.reorder_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "format-po",
+      "name": "Format PO by Supplier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Format Purchase Orders grouped by supplier\nconst data = $('Parse AI Response').item.json;\nconst itemsBySupplier = data.items_by_supplier;\nconst poDate = data.date;\n\nconst pos = [];\nlet poNumber = 1;\n\nfor (const supplierName of Object.keys(itemsBySupplier)) {\n  const supplierData = itemsBySupplier[supplierName];\n  \n  let poText = `PURCHASE ORDER\\n`;\n  poText += `PO Number: PO-${poDate.replace(/-/g, '')}-${String(poNumber).padStart(3, '0')}\\n`;\n  poText += `Date: ${poDate}\\n`;\n  poText += `Supplier: ${supplierName}\\n`;\n  poText += `\\n--- ORDER DETAILS ---\\n\\n`;\n  \n  for (const item of supplierData.items) {\n    const urgencyFlag = item.urgency === 'critical' ? ' [CRITICAL]' : (item.urgency === 'high' ? ' [HIGH]' : '');\n    poText += `SKU: ${item.sku}${urgencyFlag}\\n`;\n    poText += `Item: ${item.name}\\n`;\n    poText += `Quantity: ${item.suggested_order_qty} units\\n`;\n    poText += `Unit Cost: $${item.unit_cost.toFixed(2)}\\n`;\n    poText += `Line Total: $${item.estimated_po_value.toFixed(2)}\\n`;\n    poText += `Reason: ${item.reasoning}\\n`;\n    poText += `\\n`;\n  }\n  \n  poText += `--- SUMMARY ---\\n`;\n  poText += `Total Items: ${supplierData.items.length}\\n`;\n  poText += `Order Total: $${supplierData.subtotal.toFixed(2)}\\n`;\n  poText += `\\nPlease confirm receipt and expected delivery date.\\n`;\n  poText += `\\nRegards,\\nInventory Management System`;\n  \n  pos.push({\n    po_number: `PO-${poDate.replace(/-/g, '')}-${String(poNumber).padStart(3, '0')}`,\n    supplier: supplierName,\n    supplier_email: supplierData.supplier_email,\n    po_text: poText,\n    item_count: supplierData.items.length,\n    subtotal: supplierData.subtotal,\n    items: supplierData.items\n  });\n  \n  poNumber++;\n}\n\n// Return the first PO for the Gmail node (we'll send to first supplier as demo)\nconst firstPO = pos.length > 0 ? pos[0] : null;\n\nreturn [{\n  json: {\n    ...data,\n    all_pos: pos,\n    po_count: pos.length,\n    first_po: firstPO,\n    email_subject: firstPO ? `Purchase Order ${firstPO.po_number} - ${firstPO.supplier}` : 'No PO',\n    email_to: firstPO ? firstPO.supplier_email : '',\n    email_body: firstPO ? firstPO.po_text : ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "send-email",
+      "name": "Send Supplier Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Format PO by Supplier').item.json.email_to }}",
+        "subject": "={{ $('Format PO by Supplier').item.json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $('Format PO by Supplier').item.json.email_body }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "log-sheets",
+      "name": "Log PO to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1760,
+        200
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "id",
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $('Parse AI Response').item.json.date }}",
+            "PO Number": "={{ $('Format PO by Supplier').item.json.first_po ? $('Format PO by Supplier').item.json.first_po.po_number : 'N/A' }}",
+            "Supplier": "={{ $('Format PO by Supplier').item.json.first_po ? $('Format PO by Supplier').item.json.first_po.supplier : 'N/A' }}",
+            "Items": "={{ $('Parse AI Response').item.json.reorder_count }}",
+            "Total Value": "={{ $('Parse AI Response').item.json.total_po_value }}",
+            "Critical Items": "={{ $('Parse AI Response').item.json.critical_count }}",
+            "Trigger": "={{ $('Parse AI Response').item.json.trigger }}",
+            "AI Model": "={{ $('Parse AI Response').item.json.ai_model }}"
+          },
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "type": "string"
+            },
+            {
+              "id": "PO Number",
+              "displayName": "PO Number",
+              "type": "string"
+            },
+            {
+              "id": "Supplier",
+              "displayName": "Supplier",
+              "type": "string"
+            },
+            {
+              "id": "Items",
+              "displayName": "Items",
+              "type": "string"
+            },
+            {
+              "id": "Total Value",
+              "displayName": "Total Value",
+              "type": "string"
+            },
+            {
+              "id": "Critical Items",
+              "displayName": "Critical Items",
+              "type": "string"
+            },
+            {
+              "id": "Trigger",
+              "displayName": "Trigger",
+              "type": "string"
+            },
+            {
+              "id": "AI Model",
+              "displayName": "AI Model",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "slack-notify",
+      "name": "Slack: Ops Team Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1980,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: ':package: *Inventory Reorder Alert*\\n\\n' + $('Parse AI Response').item.json.analysis_summary + '\\n\\n:clipboard: *Summary:*\\n\u2022 Items to reorder: ' + $('Parse AI Response').item.json.reorder_count + '\\n\u2022 Critical items: ' + $('Parse AI Response').item.json.critical_count + '\\n\u2022 Total PO value: $' + ($('Parse AI Response').item.json.total_po_value).toFixed(2) + '\\n\u2022 Suppliers contacted: ' + $('Format PO by Supplier').item.json.po_count + '\\n\\n:white_check_mark: Email sent to ' + $('Format PO by Supplier').item.json.first_po.supplier + '\\n:page_facing_up: PO logged to Google Sheets' }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "po-complete",
+      "name": "PO Complete \u2014 Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Final summary node - return complete execution report\nconst data = $('Parse AI Response').item.json;\nconst poData = $('Format PO by Supplier').item.json;\n\nreturn [{\n  json: {\n    status: 'completed',\n    message: 'Inventory reorder process completed successfully',\n    summary: {\n      date: data.date,\n      trigger: data.trigger,\n      total_skus_analyzed: data.total_skus,\n      items_needing_reorder: data.reorder_count,\n      critical_items: data.critical_count,\n      total_po_value: data.total_po_value,\n      suppliers_contacted: poData.po_count,\n      ai_analysis: data.analysis_summary,\n      ai_tokens_used: data.ai_tokens_used\n    },\n    purchase_orders: poData.all_pos,\n    notifications: {\n      email_sent: true,\n      sheets_logged: true,\n      slack_notified: true\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "no-reorders",
+      "name": "No Reorders Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        400
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// All stock levels are nominal - no reorders needed\nconst data = $('Parse AI Response').item.json;\n\nreturn [{\n  json: {\n    status: 'completed',\n    message: 'All stock levels are nominal - no reorders needed',\n    summary: {\n      date: data.date,\n      trigger: data.trigger,\n      total_skus_analyzed: data.total_skus,\n      items_needing_reorder: 0,\n      ai_analysis: data.analysis_summary || 'All items above reorder threshold'\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "id": "log-error",
+      "name": "Log Error Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        600
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Format error details for logging and notification\nconst errorData = $input.first().json;\n\nconst errorInfo = {\n  timestamp: new Date().toISOString(),\n  workflow: errorData.workflow ? errorData.workflow.name : 'Unknown',\n  execution_id: errorData.execution ? errorData.execution.id : 'Unknown',\n  node: errorData.execution && errorData.execution.lastNodeExecuted ? errorData.execution.lastNodeExecuted : 'Unknown',\n  error_message: errorData.execution && errorData.execution.error && errorData.execution.error.message ? errorData.execution.error.message : 'Unknown error',\n  error_stack: errorData.execution && errorData.execution.error && errorData.execution.error.stack ? errorData.execution.error.stack.substring(0, 500) : ''\n};\n\nconst slackMessage = `:rotating_light: *Workflow Error Alert*\\n\\n*Workflow:* ${errorInfo.workflow}\\n*Node:* ${errorInfo.node}\\n*Time:* ${errorInfo.timestamp}\\n*Error:* ${errorInfo.error_message}`;\n\nreturn [{\n  json: {\n    ...errorInfo,\n    slack_message: slackMessage\n  }\n}];"
+      }
+    },
+    {
+      "id": "error-alert",
+      "name": "Error Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        440,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.slack_message }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "Webhook: Trigger Reorder Check": {
+      "main": [
+        [
+          {
+            "node": "Load Inventory Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Inventory Data": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude: Analyze Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Analyze Inventory": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Any Reorders Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Reorders Needed?": {
+      "main": [
+        [
+          {
+            "node": "Format PO by Supplier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Reorders Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format PO by Supplier": {
+      "main": [
+        [
+          {
+            "node": "Send Supplier Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Supplier Email": {
+      "main": [
+        [
+          {
+            "node": "Log PO to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log PO to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Slack: Ops Team Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Ops Team Alert": {
+      "main": [
+        [
+          {
+            "node": "PO Complete \u2014 Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Details": {
+      "main": [
+        [
+          {
+            "node": "Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "staticData": null
+}

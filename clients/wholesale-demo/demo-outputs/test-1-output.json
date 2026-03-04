@@ -1,0 +1,190 @@
+{
+  "execution_id": 86,
+  "workflow": "AI Inventory Reorder & Supplier Notification",
+  "status": "success",
+  "duration_seconds": 20.2,
+  "result": {
+    "status": "completed",
+    "message": "Inventory reorder process completed successfully",
+    "summary": {
+      "date": "2026-03-04",
+      "trigger": "manual",
+      "total_skus_analyzed": 15,
+      "items_needing_reorder": 8,
+      "critical_items": 6,
+      "total_po_value": 4889.77,
+      "suppliers_contacted": 5,
+      "ai_analysis": "8 items require immediate reordering, with safety equipment being the most critical category. Safety glasses and cut-resistant gloves are at critically low levels, while electrical wire connectors are nearly depleted. Total estimated PO value across all items is $4,890.",
+      "ai_tokens_used": 2347
+    },
+    "purchase_orders": [
+      {
+        "po_number": "PO-20260304-001",
+        "supplier": "SafeGuard Industrial",
+        "supplier_email": "orders@safeguard.com",
+        "po_text": "PURCHASE ORDER\nPO Number: PO-20260304-001\nDate: 2026-03-04\nSupplier: SafeGuard Industrial\n\n--- ORDER DETAILS ---\n\nSKU: SAF-004 [CRITICAL]\nItem: Safety Glasses (ANSI Z87)\nQuantity: 34 units\nUnit Cost: $12.50\nLine Total: $425.00\nReason: Stock at 15% of threshold - critically low for essential PPE item\n\nSKU: SAF-002 [CRITICAL]\nItem: Cut-Resistant Gloves (L)\nQuantity: 22 units\nUnit Cost: $18.75\nLine Total: $412.50\nReason: Stock at 27% of threshold - critical safety item\n\nSKU: SAF-001 [HIGH]\nItem: Hard Hats (Class E)\nQuantity: 13 units\nUnit Cost: $35.00\nLine Total: $455.00\nReason: Stock at 48% of threshold - required safety equipment\n\n--- SUMMARY ---\nTotal Items: 3\nOrder Total: $1292.50\n\nPlease confirm receipt and expected delivery date.\n\nRegards,\nInventory Management System",
+        "item_count": 3,
+        "subtotal": 1292.5,
+        "items": [
+          {
+            "sku": "SAF-004",
+            "name": "Safety Glasses (ANSI Z87)",
+            "category": "Safety",
+            "current_stock": 6,
+            "reorder_threshold": 40,
+            "suggested_order_qty": 34,
+            "urgency": "critical",
+            "unit_cost": 12.5,
+            "estimated_po_value": 425,
+            "supplier": "SafeGuard Industrial",
+            "supplier_email": "orders@safeguard.com",
+            "reasoning": "Stock at 15% of threshold - critically low for essential PPE item"
+          },
+          {
+            "sku": "SAF-002",
+            "name": "Cut-Resistant Gloves (L)",
+            "category": "Safety",
+            "current_stock": 8,
+            "reorder_threshold": 30,
+            "suggested_order_qty": 22,
+            "urgency": "critical",
+            "unit_cost": 18.75,
+            "estimated_po_value": 412.5,
+            "supplier": "SafeGuard Industrial",
+            "supplier_email": "orders@safeguard.com",
+            "reasoning": "Stock at 27% of threshold - critical safety item"
+          },
+          {
+            "sku": "SAF-001",
+            "name": "Hard Hats (Class E)",
+            "category": "Safety",
+            "current_stock": 12,
+            "reorder_threshold": 25,
+            "suggested_order_qty": 13,
+            "urgency": "high",
+            "unit_cost": 35,
+            "estimated_po_value": 455,
+            "supplier": "SafeGuard Industrial",
+            "supplier_email": "orders@safeguard.com",
+            "reasoning": "Stock at 48% of threshold - required safety equipment"
+          }
+        ]
+      },
+      {
+        "po_number": "PO-20260304-002",
+        "supplier": "NYC Electric Supply",
+        "supplier_email": "sales@nycelectric.com",
+        "po_text": "PURCHASE ORDER\nPO Number: PO-20260304-002\nDate: 2026-03-04\nSupplier: NYC Electric Supply\n\n--- ORDER DETAILS ---\n\nSKU: ELC-001 [CRITICAL]\nItem: Wire Connectors (100-pk)\nQuantity: 19 units\nUnit Cost: $45.00\nLine Total: $855.00\nReason: Stock at 5% of threshold - nearly depleted\n\n--- SUMMARY ---\nTotal Items: 1\nOrder Total: $855.00\n\nPlease confirm receipt and expected delivery date.\n\nRegards,\nInventory Management System",
+        "item_count": 1,
+        "subtotal": 855,
+        "items": [
+          {
+            "sku": "ELC-001",
+            "name": "Wire Connectors (100-pk)",
+            "category": "Electrical",
+            "current_stock": 1,
+            "reorder_threshold": 20,
+            "suggested_order_qty": 19,
+            "urgency": "critical",
+            "unit_cost": 45,
+            "estimated_po_value": 855,
+            "supplier": "NYC Electric Supply",
+            "supplier_email": "sales@nycelectric.com",
+            "reasoning": "Stock at 5% of threshold - nearly depleted"
+          }
+        ]
+      },
+      {
+        "po_number": "PO-20260304-003",
+        "supplier": "Metro Packaging Co",
+        "supplier_email": "orders@metropkg.com",
+        "po_text": "PURCHASE ORDER\nPO Number: PO-20260304-003\nDate: 2026-03-04\nSupplier: Metro Packaging Co\n\n--- ORDER DETAILS ---\n\nSKU: PKG-003 [CRITICAL]\nItem: Corrugated Boxes (12x12x12)\nQuantity: 16 units\nUnit Cost: $24.99\nLine Total: $399.84\nReason: Stock at 20% of threshold - essential shipping supply\n\nSKU: PKG-001 [CRITICAL]\nItem: Stretch Wrap Film (18\")\nQuantity: 7 units\nUnit Cost: $89.99\nLine Total: $629.93\nReason: Stock at 30% of threshold - critical packaging material\n\n--- SUMMARY ---\nTotal Items: 2\nOrder Total: $1029.77\n\nPlease confirm receipt and expected delivery date.\n\nRegards,\nInventory Management System",
+        "item_count": 2,
+        "subtotal": 1029.77,
+        "items": [
+          {
+            "sku": "PKG-003",
+            "name": "Corrugated Boxes (12x12x12)",
+            "category": "Packaging",
+            "current_stock": 4,
+            "reorder_threshold": 20,
+            "suggested_order_qty": 16,
+            "urgency": "critical",
+            "unit_cost": 24.99,
+            "estimated_po_value": 399.84,
+            "supplier": "Metro Packaging Co",
+            "supplier_email": "orders@metropkg.com",
+            "reasoning": "Stock at 20% of threshold - essential shipping supply"
+          },
+          {
+            "sku": "PKG-001",
+            "name": "Stretch Wrap Film (18\")",
+            "category": "Packaging",
+            "current_stock": 3,
+            "reorder_threshold": 10,
+            "suggested_order_qty": 7,
+            "urgency": "critical",
+            "unit_cost": 89.99,
+            "estimated_po_value": 629.93,
+            "supplier": "Metro Packaging Co",
+            "supplier_email": "orders@metropkg.com",
+            "reasoning": "Stock at 30% of threshold - critical packaging material"
+          }
+        ]
+      },
+      {
+        "po_number": "PO-20260304-004",
+        "supplier": "CleanPro Supplies",
+        "supplier_email": "orders@cleanpro.com",
+        "po_text": "PURCHASE ORDER\nPO Number: PO-20260304-004\nDate: 2026-03-04\nSupplier: CleanPro Supplies\n\n--- ORDER DETAILS ---\n\nSKU: CLN-002 [CRITICAL]\nItem: Microfiber Mop Heads\nQuantity: 10 units\nUnit Cost: $22.50\nLine Total: $225.00\nReason: Stock at 17% of threshold - essential cleaning supply\n\n--- SUMMARY ---\nTotal Items: 1\nOrder Total: $225.00\n\nPlease confirm receipt and expected delivery date.\n\nRegards,\nInventory Management System",
+        "item_count": 1,
+        "subtotal": 225,
+        "items": [
+          {
+            "sku": "CLN-002",
+            "name": "Microfiber Mop Heads",
+            "category": "Cleaning",
+            "current_stock": 2,
+            "reorder_threshold": 12,
+            "suggested_order_qty": 10,
+            "urgency": "critical",
+            "unit_cost": 22.5,
+            "estimated_po_value": 225,
+            "supplier": "CleanPro Supplies",
+            "supplier_email": "orders@cleanpro.com",
+            "reasoning": "Stock at 17% of threshold - essential cleaning supply"
+          }
+        ]
+      },
+      {
+        "po_number": "PO-20260304-005",
+        "supplier": "ProTool Wholesale",
+        "supplier_email": "orders@protool.com",
+        "po_text": "PURCHASE ORDER\nPO Number: PO-20260304-005\nDate: 2026-03-04\nSupplier: ProTool Wholesale\n\n--- ORDER DETAILS ---\n\nSKU: PWR-002 [HIGH]\nItem: Reciprocating Saw Blades (10-pk)\nQuantity: 10 units\nUnit Cost: $48.75\nLine Total: $487.50\nReason: Stock at 33% of threshold - high-demand tool consumable\n\n--- SUMMARY ---\nTotal Items: 1\nOrder Total: $487.50\n\nPlease confirm receipt and expected delivery date.\n\nRegards,\nInventory Management System",
+        "item_count": 1,
+        "subtotal": 487.5,
+        "items": [
+          {
+            "sku": "PWR-002",
+            "name": "Reciprocating Saw Blades (10-pk)",
+            "category": "Tools",
+            "current_stock": 5,
+            "reorder_threshold": 15,
+            "suggested_order_qty": 10,
+            "urgency": "high",
+            "unit_cost": 48.75,
+            "estimated_po_value": 487.5,
+            "supplier": "ProTool Wholesale",
+            "supplier_email": "orders@protool.com",
+            "reasoning": "Stock at 33% of threshold - high-demand tool consumable"
+          }
+        ]
+      }
+    ],
+    "notifications": {
+      "email_sent": true,
+      "sheets_logged": true,
+      "slack_notified": true
+    }
+  }
+}

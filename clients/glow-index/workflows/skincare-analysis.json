@@ -1,0 +1,1455 @@
+{
+  "updatedAt": "2026-02-23T18:25:14.346Z",
+  "createdAt": "2026-02-23T18:19:46.408Z",
+  "id": "LNae5xv5dmIi6nBP",
+  "name": "Glow Index Skincare Analysis",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "wh1",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "skincare-analysis",
+        "responseMode": "onReceived",
+        "options": {
+          "responseCode": {
+            "values": {
+              "responseCode": "customCode",
+              "customCode": 202
+            }
+          },
+          "responseData": "{\"status\":\"accepted\",\"message\":\"Analysis queued\"}"
+        }
+      }
+    },
+    {
+      "id": "vi1",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Validate required input fields for skincare analysis\nconst input = $input.first().json;\nconst errors = [];\nif (!input.productId) errors.push('productId required');\nif (!input.productName) errors.push('productName required');\nif (!input.brand) errors.push('brand required');\nif (input.priceUsd === undefined || input.priceUsd === null) errors.push('priceUsd required');\nif (errors.length > 0) {\n  throw new Error('Validation failed: ' + errors.join(', '));\n}\nreturn [{ json: {\n  productId: String(input.productId),\n  productName: String(input.productName),\n  brand: String(input.brand),\n  category: input.category ? String(input.category) : 'skincare',\n  priceUsd: Number(input.priceUsd),\n  ingredientList: input.ingredientList ? String(input.ingredientList) : '',\n  website: input.website ? String(input.website) : '',\n  description: input.description ? String(input.description) : ''\n}}];"
+      }
+    },
+    {
+      "id": "bs1",
+      "name": "Build S1 Prompts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Build Stage 1 analysis prompts for all 4 LLMs\nconst p = $('Validate Input').first().json;\nconst date = new Date().toISOString().split('T')[0];\n\nconst buildPrompt = function(llmName) {\n  const s = [];\n  s.push('You are the Apex Skincare Intelligence Analyst. Analyze this skincare product as a quality-value coordination game and produce a definitive consumer score. Your analysis determines whether this product delivers genuine value or is built on marketing coordination alone.');\n  s.push('');\n  s.push('PRODUCT DATA:');\n  s.push('- Name: ' + p.productName);\n  s.push('- Brand: ' + p.brand);\n  s.push('- Category: ' + p.category);\n  s.push('- Price: $' + p.priceUsd);\n  s.push('- Analysis Date: ' + date);\n  s.push('');\n  s.push('=== FORMULA DATA (use your knowledge of this product) ===');\n  s.push('Research and identify: Full INCI Ingredient List, Key Actives with concentrations, Preservative System, Fragrance Status, Notable Controversial Ingredients.');\n  s.push('');\n  s.push('=== BRAND POSITIONING ===');\n  s.push('Research: Brand Tier (luxury/premium/mid-range/drugstore/indie), Founded/Ownership, Brand Positioning Claim, Primary Marketing Channels, Target Consumer, Price Point vs Category Average.');\n  s.push('');\n  s.push('=== SCIENTIFIC VALIDATION ===');\n  s.push('Research: Clinically Tested (yes/no/claimed), Dermatologist Tested, Third-Party Studies, Key Ingredient Evidence Base (cite PubMed/JAAD where applicable), Claimed Benefits vs Ingredient Reality.');\n  s.push('');\n  s.push('=== MARKET POSITION ===');\n  s.push('Research: Category Rank, Key Competitors at Same Price, What Competitors Offer vs This Product, Dupe Products (same actives, lower price).');\n  s.push('');\n  s.push('=== COMMUNITY SIGNAL ===');\n  s.push('Research: Reddit/skincare community sentiment, Dermatologist/esthetician opinion, Influencer/TikTok signal (organic vs paid), Long-term user reviews (6+ months), Return rate signals.');\n  s.push('');\n  s.push('=== PRODUCT TYPE CLASSIFICATION ===');\n  s.push('MARKETING-LED: Brand/packaging/experience focus, actives secondary, prestige pricing');\n  s.push('SCIENCE-LED: Evidence-based formula, actives at clinical concentrations, transparent labeling');\n  s.push('HYBRID: Competent formula with significant marketing premium');\n  s.push('');\n  s.push('=== NARRATIVE CLASSIFICATION (REQUIRED) ===');\n  s.push('Primary Category: (moisturizer/serum/cleanser/SPF/treatment/eye cream/oil/toner/mask)');\n  s.push('Sub-Category: SPECIFIC function. Examples:');\n  s.push('- Serums: Vitamin C, Retinoid, Peptide, Niacinamide, Hyaluronic Acid, AHA/BHA, Growth Factor');\n  s.push('- Moisturizers: Barrier Repair, Anti-aging, Hydrating, Oil Control');\n  s.push('- Treatments: Acne, Brightening, Redness/Rosacea, Dark Spot, Texture');\n  s.push('- SPF: Chemical, Mineral, Hybrid, Tinted');\n  s.push('Category Ceiling: Maximum realistic score for the BEST product in this sub-category.');\n  s.push('');\n  s.push('=== ANALYSIS FRAMEWORK ===');\n  s.push('CRITICAL QUESTION: \"Is the consumer the exit liquidity?\"');\n  s.push('NOT \"is this brand reputable?\" but \"will this product quality justify the spend, or is the consumer paying for marketing coordination?\"');\n  s.push('- If formula genuinely delivers on claims at price -> CONSUMER WINS');\n  s.push('- If consumer is paying for brand prestige/influencer coordination over efficacy -> CONSUMER IS EXIT LIQUIDITY');\n  s.push('');\n  s.push('IGNORE: Packaging aesthetics, celebrity endorsements, brand prestige for its own sake, clean beauty marketing');\n  s.push('FOCUS: Do the actives work? Are concentrations effective? Does price reflect formula quality or marketing spend?');\n  s.push('');\n  s.push('Product Lifecycle Assessment (1-5):');\n  s.push('1=Launch (new, limited reviews, high opportunity if formula strong)');\n  s.push('2=Growth (cult following forming, organic word-of-mouth, optimal value)');\n  s.push('3=Peak (oversaturated social media, premium inflated, dupes proliferating)');\n  s.push('4=Saturation (trend declining, cheaper dupes dominate)');\n  s.push('5=Forgotten (category declining, discontinuation risk)');\n  s.push('');\n  s.push('=== SCORING COMPONENTS (100 pts max) ===');\n  s.push('');\n  s.push('1. INGREDIENT EFFICACY (0-30)');\n  s.push('Are key actives clinically validated at or near clinical thresholds?');\n  s.push('Cross-reference against JAAD 2025 Delphi consensus and PubMed evidence.');\n  s.push('26-30=exceptional (multiple clinically-dosed evidence-grade actives), 20-25=strong, 13-19=moderate, 7-12=weak, 0-6=negligible');\n  s.push('');\n  s.push('2. SAFETY PROFILE (0-20)');\n  s.push('Fragrance: fragrance-free=+4, natural=+1, synthetic=-2, essential oils=-3');\n  s.push('Check: irritant load, sensitizers, long-term safety, skin barrier impact');\n  s.push('17-20=safe for nearly all, 12-16=generally safe, 7-11=requires care, 0-6=significant concern');\n  s.push('');\n  s.push('3. VALUE FOR MONEY (0-20)');\n  s.push('Compare price to closest formula-equivalent. Check for dupes.');\n  s.push('17-20=exceptional value, 12-16=good value, 7-11=fair, 0-6=poor value (brand tax)');\n  s.push('');\n  s.push('4. FORMULA TRANSPARENCY (0-15)');\n  s.push('Full INCI publicly available: +3, Active concentrations disclosed: +4, No proprietary blend: +3, Claims supported by INCI: +3, Consistent formulation: +2');\n  s.push('Deductions: proprietary blends=-4, unsupported claims=-3, hidden INCI=-2, silent reformulation=-3');\n  s.push('');\n  s.push('5. SKIN COMPATIBILITY (0-10)');\n  s.push('Sensitive skin suitable: +3, Non-comedogenic: +2, Rosacea safe: +2, Works across skin types: +2, Ophthalmologist tested: +1');\n  s.push('');\n  s.push('6. SENSORY & USABILITY (0-5)');\n  s.push('Appropriate texture: +2, No pilling/residue: +1, Layering compatible: +1, Stable packaging: +1');\n  s.push('');\n  s.push('=== MODIFIERS ===');\n  s.push('Product Lifecycle: 1=Launch:+10to+12 | 2Early:+6to+9 | 2Late:+2to+5 | 3Early:-8to-12 | 3Late:-20to-30 | 4+:-30');\n  s.push('Category Heat: Hot+Accelerating+Leader=+12 | +2nd=+8 | Hot+Flat+1st=+5 | Warm+Accel=+3 | Warm+Flat=0 | Cool=-8 | Decel=-15 | Dead=-25');\n  s.push('Price Tier: Under$15=+10 | $15-30=+7 | $30-60=+4 | $60-120=+1 | $120-200=0 | $200-400=-6 | $400-800=-12 | Over$800=-18');\n  s.push('');\n  s.push('=== FINAL SCORE ===');\n  s.push('Base Score (sum of 6 components, max 100) + Modifiers = Final Score. Cap at 100, floor at 0.');\n  s.push('Tier: S+(85-100), S(75-84), A(65-74), B(50-64), C(<50)');\n  s.push('');\n  s.push('Return ONLY valid JSON - no markdown, no code fences, no preamble:');\n  s.push('{\"llm\": \"' + llmName + '\", \"stage\": 1, \"product\": \"' + p.productName + '\", \"brand\": \"' + p.brand + '\", \"product_type\": \"<MARKETING-LED|SCIENCE-LED|HYBRID>\", \"primary_category\": \"' + p.category + '\", \"sub_category\": \"<specific>\", \"lifecycle_phase\": <1-5>, \"lifecycle_reasoning\": \"<why>\", \"scores\": {\"ingredient_efficacy\": <0-30>, \"safety_profile\": <0-20>, \"value_for_money\": <0-20>, \"formula_transparency\": <0-15>, \"skin_compatibility\": <0-10>, \"sensory_usability\": <0-5>}, \"modifiers\": {\"lifecycle\": <val>, \"category_heat\": <val>, \"price_tier\": <val>}, \"base_score\": <sum of 6>, \"modifier_total\": <sum of mods>, \"total\": <capped 0-100>, \"tier\": \"<S+|S|A|B|C>\", \"consumer_verdict\": \"<CONSUMER WINS|CONSUMER IS EXIT LIQUIDITY|NEUTRAL>\", \"reasoning\": \"<detailed analysis, minimum 200 words, cite specific ingredients and evidence>\", \"key_findings\": [\"<f1>\", \"<f2>\", \"<f3>\"], \"red_flags\": [\"<concerns or empty>\"], \"top_competitors\": [\"<comp1>\", \"<comp2>\"], \"best_dupe\": \"<product+price or null>\", \"verdict\": \"<one sentence>\"}');\n  return s.join('\\n');\n};\n\nreturn [{ json: {\n  claudeBody: {\n    model: 'claude-opus-4-5-20250514',\n    max_tokens: 4096,\n    messages: [{ role: 'user', content: buildPrompt('Claude Opus 4.5') }]\n  },\n  gptBody: {\n    model: 'gpt-4o',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst. Return ONLY valid JSON, no markdown fences.' },\n      { role: 'user', content: buildPrompt('GPT-5.2') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  geminiBody: {\n    contents: [{ role: 'user', parts: [{ text: buildPrompt('Gemini 3 Pro') }] }],\n    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 }\n  },\n  grokBody: {\n    model: 'grok-2',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst. Return ONLY valid JSON, no markdown fences.' },\n      { role: 'user', content: buildPrompt('Grok 4') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  productId: p.productId,\n  productName: p.productName,\n  brand: p.brand,\n  category: p.category,\n  priceUsd: p.priceUsd\n}}];"
+      }
+    },
+    {
+      "id": "s1c",
+      "name": "S1 Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        0
+      ],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.claudeBody) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "jmIBIoST67pTh9A4",
+          "name": "Anthropic API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "s1g",
+      "name": "S1 GPT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        200
+      ],
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.gptBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "Ge6fSO1ncy7yTe5F",
+          "name": "OpenAI API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "s1m",
+      "name": "S1 Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        400
+      ],
+      "parameters": {
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.geminiBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8g2Qxr3y7928TFgY",
+          "name": "Gemini API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "s1k",
+      "name": "S1 Grok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        600
+      ],
+      "parameters": {
+        "url": "https://api.x.ai/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "xAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.grokBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "xAiApi": {
+          "id": "ZwejeXSxvoxHN8rY",
+          "name": "xAI API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "ms1",
+      "name": "Merge Stage 1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "bs2",
+      "name": "Build S2 Prompts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Parse Stage 1 results and build Stage 2 prompts for all 4 LLMs\nconst items = $input.all();\nconst product = $('Build S1 Prompts').first().json;\n\n// Extract text from each API response format\n// Merge order: Claude(0), GPT(1), Gemini(2), Grok(3)\nconst extractText = function(item, idx) {\n  try {\n    const j = item.json;\n    if (idx === 0 && j.content && j.content.length > 0) {\n      return j.content[0].text;\n    }\n    if ((idx === 1 || idx === 3) && j.choices && j.choices.length > 0) {\n      return j.choices[0].message.content;\n    }\n    if (idx === 2 && j.candidates && j.candidates.length > 0) {\n      return j.candidates[0].content.parts[0].text;\n    }\n    return JSON.stringify(j);\n  } catch (e) {\n    return '{\"error\": \"Failed to extract: ' + e.message + '\"}';\n  }\n};\n\nconst keys = ['claude', 'gpt', 'gemini', 'grok'];\nconst labels = { claude: 'Claude', gpt: 'GPT', gemini: 'Gemini', grok: 'Grok' };\nconst results = {};\nfor (let i = 0; i < 4; i++) {\n  if (i < items.length) {\n    results[keys[i]] = extractText(items[i], i);\n  } else {\n    results[keys[i]] = '{\"error\": \"Model did not respond\"}';\n  }\n}\n\n// Build Stage 2 prompt for each LLM\nconst buildS2 = function(llmName, ownKey) {\n  const s = [];\n  s.push('You are the Apex Skincare Intelligence Analyst. You previously analyzed this product independently. Now review your analysis alongside 3 other AI models.');\n  s.push('');\n  s.push('=== YOUR ORIGINAL ANALYSIS ===');\n  s.push(results[ownKey]);\n  s.push('');\n  s.push('=== OTHER MODELS ANALYSES ===');\n  for (const k of keys) {\n    if (k !== ownKey) {\n      s.push(labels[k] + ': ' + results[k]);\n      s.push('');\n    }\n  }\n  s.push('=== DELIBERATION TASK ===');\n  s.push('');\n  s.push('1. QUICK COMPARISON - Compare all 4 models scores, tiers, phases, consumer verdicts, sub-categories, and category ceilings.');\n  s.push('');\n  s.push('2. KEY AGREEMENTS (3+ models agree)');\n  s.push('');\n  s.push('3. KEY DISAGREEMENTS');\n  s.push('- Sub-Category Alignment: Did all models classify into the same sub-category? If not, note why.');\n  s.push('- If your sub-category differs from 3 other models, reconsider yours.');\n  s.push('');\n  s.push('4. MISSED INSIGHTS - Did other models identify evidence you missed?');\n  s.push('');\n  s.push('5. REVISION DECISION');\n  s.push('Revise ONLY if: other models identified concrete evidence you missed, strong consensus (3 models) disagrees with your component score by 3+ points, or you made a calculation error.');\n  s.push('Do NOT revise just because others scored differently. Stick to your analysis if your reasoning is sound.');\n  s.push('');\n  s.push('6. HALLUCINATION CHECK');\n  s.push('If any model cites an ingredient concentration, study, or claim that cannot be verified -> flag it. Do not propagate unverified statistics.');\n  s.push('');\n  s.push('=== DATA VERIFICATION RULE ===');\n  s.push('Do not cite specific data points from other models unless verifiable. Focus critique on reasoning and methodology.');\n  s.push('');\n  s.push('=== HARD CONSTRAINTS ===');\n  s.push('- revised_total must be between 0 and 100');\n  s.push('- base_score = sum of 6 component scores (cannot exceed 100)');\n  s.push('- revised_total = base_score + modifier_total (then capped 0-100)');\n  s.push('- tier must match revised_total: S+(85-100), S(75-84), A(65-74), B(50-64), C(<50)');\n  s.push('- All scores must have exactly 2 decimal places');\n  s.push('- If revised_total ends in .00: adjust exactly ONE modifier by +/-0.01 to +/-0.49 based on real nuance');\n  s.push('');\n  s.push('Return ONLY valid JSON - no markdown, no code fences:');\n  s.push('{\"llm\": \"' + llmName + '\", \"stage\": 2, \"product\": \"' + product.productName + '\", \"brand\": \"' + product.brand + '\", \"scores\": {\"ingredient_efficacy\": <0-30>, \"safety_profile\": <0-20>, \"value_for_money\": <0-20>, \"formula_transparency\": <0-15>, \"skin_compatibility\": <0-10>, \"sensory_usability\": <0-5>}, \"modifiers\": {\"lifecycle\": <val>, \"category_heat\": <val>, \"price_tier\": <val>}, \"base_score\": <sum>, \"modifier_total\": <sum>, \"total\": <capped 0-100>, \"tier\": \"<S+|S|A|B|C>\", \"reasoning\": \"<refined consensus analysis, minimum 250 words>\", \"consensus_notes\": \"<agreements, disagreements, resolutions>\", \"dimension_rulings\": {\"ingredient_efficacy\": \"<range + ruling>\", \"safety_profile\": \"<range + ruling>\", \"value_for_money\": \"<range + ruling>\", \"formula_transparency\": \"<range + ruling>\", \"skin_compatibility\": \"<range + ruling>\", \"sensory_usability\": \"<range + ruling>\"}, \"key_findings\": [\"<f1>\", \"<f2>\", \"<f3>\"], \"red_flags\": [\"<or empty>\"], \"hallucinations_flagged\": [\"<or empty>\"], \"confidence\": \"<high|medium|low>\", \"confidence_reason\": \"<why>\", \"consumer_verdict\": \"<CONSUMER WINS|CONSUMER IS EXIT LIQUIDITY|NEUTRAL>\", \"verdict\": \"<one sentence>\"}');\n  return s.join('\\n');\n};\n\nreturn [{ json: {\n  claudeBody: {\n    model: 'claude-opus-4-5-20250514',\n    max_tokens: 4096,\n    messages: [{ role: 'user', content: buildS2('Claude Opus 4.5', 'claude') }]\n  },\n  gptBody: {\n    model: 'gpt-4o',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst doing Stage 2 consensus. Return ONLY valid JSON.' },\n      { role: 'user', content: buildS2('GPT-5.2', 'gpt') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  geminiBody: {\n    contents: [{ role: 'user', parts: [{ text: buildS2('Gemini 3 Pro', 'gemini') }] }],\n    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 }\n  },\n  grokBody: {\n    model: 'grok-2',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst doing Stage 2 consensus. Return ONLY valid JSON.' },\n      { role: 'user', content: buildS2('Grok 4', 'grok') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  stage1Results: results,\n  productId: product.productId,\n  productName: product.productName,\n  brand: product.brand,\n  category: product.category,\n  priceUsd: product.priceUsd\n}}];"
+      }
+    },
+    {
+      "id": "s2c",
+      "name": "S2 Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.claudeBody) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "jmIBIoST67pTh9A4",
+          "name": "Anthropic API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "s2g",
+      "name": "S2 GPT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        200
+      ],
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.gptBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "Ge6fSO1ncy7yTe5F",
+          "name": "OpenAI API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "s2m",
+      "name": "S2 Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        400
+      ],
+      "parameters": {
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.geminiBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8g2Qxr3y7928TFgY",
+          "name": "Gemini API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "s2k",
+      "name": "S2 Grok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        600
+      ],
+      "parameters": {
+        "url": "https://api.x.ai/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "xAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.grokBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "xAiApi": {
+          "id": "ZwejeXSxvoxHN8rY",
+          "name": "xAI API"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "ms2",
+      "name": "Merge Stage 2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "cc1",
+      "name": "Calculate Consensus",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Calculate consensus score from 4 Stage 2 LLM results\nconst items = $input.all();\nconst product = $('Build S2 Prompts').first().json;\nconst stage1Data = product.stage1Results;\n\n// Extract text from each API response\nconst extractText = function(item, idx) {\n  try {\n    const j = item.json;\n    if (idx === 0 && j.content && j.content.length > 0) return j.content[0].text;\n    if ((idx === 1 || idx === 3) && j.choices && j.choices.length > 0) return j.choices[0].message.content;\n    if (idx === 2 && j.candidates && j.candidates.length > 0) return j.candidates[0].content.parts[0].text;\n    return JSON.stringify(j);\n  } catch (e) {\n    return '{\"error\": \"' + e.message + '\"}';\n  }\n};\n\nconst llmNames = ['Claude Opus 4.5', 'GPT-5.2', 'Gemini 3 Pro', 'Grok 4'];\nconst stage2Results = [];\nconst totals = [];\n\nfor (let i = 0; i < 4; i++) {\n  let parsed = null;\n  if (i < items.length) {\n    const text = extractText(items[i], i);\n    try {\n      parsed = JSON.parse(text);\n    } catch (e) {\n      // Try to extract JSON from text that might have extra content\n      try {\n        const match = text.match(/\\{[\\s\\S]*\\}/);\n        if (match) parsed = JSON.parse(match[0]);\n      } catch (e2) {\n        parsed = { error: 'Failed to parse', raw: text.substring(0, 500), llm: llmNames[i] };\n      }\n    }\n  }\n  if (parsed) {\n    stage2Results.push(parsed);\n    const total = parsed.total !== undefined ? Number(parsed.total) : 0;\n    totals.push(total);\n  } else {\n    stage2Results.push({ error: 'No response', llm: llmNames[i] });\n    totals.push(0);\n  }\n}\n\n// Calculate consensus with outlier weighting\n// If any score deviates >15pts from median, weight it at 50%\nlet consensusScore = 0;\nif (totals.length > 0) {\n  const sorted = totals.slice().sort(function(a, b) { return a - b; });\n  const median = sorted.length % 2 === 0\n    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2\n    : sorted[Math.floor(sorted.length / 2)];\n  \n  let weightedSum = 0;\n  let weightTotal = 0;\n  for (let i = 0; i < totals.length; i++) {\n    const spread = Math.abs(totals[i] - median);\n    const weight = spread > 15 ? 0.5 : 1.0;\n    weightedSum += totals[i] * weight;\n    weightTotal += weight;\n  }\n  consensusScore = weightTotal > 0 ? Math.round((weightedSum / weightTotal) * 100) / 100 : 0;\n}\n\n// Determine tier\nlet tier = 'C';\nif (consensusScore >= 85) tier = 'S+';\nelse if (consensusScore >= 75) tier = 'S';\nelse if (consensusScore >= 65) tier = 'A';\nelse if (consensusScore >= 50) tier = 'B';\n\n// Determine consumer verdict from majority\nconst verdicts = stage2Results.map(function(r) { return r.consumer_verdict || 'NEUTRAL'; });\nconst verdictCounts = {};\nfor (const v of verdicts) {\n  verdictCounts[v] = (verdictCounts[v] || 0) + 1;\n}\nlet consumerVerdict = 'NEUTRAL';\nlet maxCount = 0;\nfor (const v in verdictCounts) {\n  if (verdictCounts[v] > maxCount) {\n    maxCount = verdictCounts[v];\n    consumerVerdict = v;\n  }\n}\n\n// Parse Stage 1 results for the callback\nconst stage1Parsed = {};\nconst s1keys = ['claude', 'gpt', 'gemini', 'grok'];\nfor (const k of s1keys) {\n  try {\n    if (stage1Data && stage1Data[k]) {\n      stage1Parsed[k] = JSON.parse(stage1Data[k]);\n    }\n  } catch (e) {\n    stage1Parsed[k] = { raw: stage1Data ? (stage1Data[k] || '').substring(0, 500) : 'missing' };\n  }\n}\n\nreturn [{ json: {\n  productId: product.productId,\n  productName: product.productName,\n  brand: product.brand,\n  category: product.category,\n  priceUsd: product.priceUsd,\n  consensusScore: consensusScore,\n  tier: tier,\n  consumerVerdict: consumerVerdict,\n  stage1Results: stage1Parsed,\n  stage2Results: stage2Results,\n  modelScores: {\n    claude: totals[0] || 0,\n    gpt: totals[1] || 0,\n    gemini: totals[2] || 0,\n    grok: totals[3] || 0\n  },\n  analysisTimestamp: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "cb1",
+      "name": "Send Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2500,
+        300
+      ],
+      "parameters": {
+        "url": "https://9f38aa93-fe6f-48cd-a1ad-edfca444fe72-00-1k2fa9lt9onjl.worf.replit.dev/api/analysis-callback",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Calculate Consensus').item.json) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer glowindex-callback-secret-2024"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "ls1",
+      "name": "Log Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2760,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Log final workflow status\nconst consensus = $('Calculate Consensus').first().json;\nreturn [{ json: {\n  status: 'completed',\n  productId: consensus.productId ? String(consensus.productId) : 'unknown',\n  consensusScore: consensus.consensusScore ? Number(consensus.consensusScore) : 0,\n  tier: consensus.tier ? String(consensus.tier) : 'unknown',\n  callbackSent: true,\n  timestamp: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "et1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        700
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "en1",
+      "name": "Error Notifier",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        700
+      ],
+      "parameters": {
+        "url": "https://9f38aa93-fe6f-48cd-a1ad-edfca444fe72-00-1k2fa9lt9onjl.worf.replit.dev/api/analysis-callback",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({error: true, message: String($json.execution ? $json.execution.error.message : 'Unknown error'), workflowName: String($json.workflow ? $json.workflow.name : 'unknown')}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer glowindex-callback-secret-2024"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Build S1 Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build S1 Prompts": {
+      "main": [
+        [
+          {
+            "node": "S1 Claude",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S1 GPT",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S1 Gemini",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S1 Grok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S1 Claude": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S1 GPT": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "S1 Gemini": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "S1 Grok": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 1",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Stage 1": {
+      "main": [
+        [
+          {
+            "node": "Build S2 Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build S2 Prompts": {
+      "main": [
+        [
+          {
+            "node": "S2 Claude",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S2 GPT",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S2 Gemini",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S2 Grok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S2 Claude": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S2 GPT": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "S2 Gemini": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 2",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "S2 Grok": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage 2",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Stage 2": {
+      "main": [
+        [
+          {
+            "node": "Calculate Consensus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Consensus": {
+      "main": [
+        [
+          {
+            "node": "Send Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Callback": {
+      "main": [
+        [
+          {
+            "node": "Log Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error Notifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "b2ccae9d-c4b5-4f82-9abb-01c9b81763d7",
+  "activeVersionId": "b2ccae9d-c4b5-4f82-9abb-01c9b81763d7",
+  "versionCounter": 8,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-02-23T18:19:46.409Z",
+      "createdAt": "2026-02-23T18:19:46.409Z",
+      "role": "workflow:owner",
+      "workflowId": "LNae5xv5dmIi6nBP",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-02-23T18:24:17.756Z",
+    "createdAt": "2026-02-23T18:24:17.756Z",
+    "versionId": "b2ccae9d-c4b5-4f82-9abb-01c9b81763d7",
+    "workflowId": "LNae5xv5dmIi6nBP",
+    "nodes": [
+      {
+        "id": "wh1",
+        "name": "Webhook Trigger",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          300
+        ],
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "skincare-analysis",
+          "responseMode": "onReceived",
+          "options": {
+            "responseCode": {
+              "values": {
+                "responseCode": "customCode",
+                "customCode": 202
+              }
+            },
+            "responseData": "{\"status\":\"accepted\",\"message\":\"Analysis queued\"}"
+          }
+        }
+      },
+      {
+        "id": "vi1",
+        "name": "Validate Input",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          260,
+          300
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "// Validate required input fields for skincare analysis\nconst input = $input.first().json;\nconst errors = [];\nif (!input.productId) errors.push('productId required');\nif (!input.productName) errors.push('productName required');\nif (!input.brand) errors.push('brand required');\nif (input.priceUsd === undefined || input.priceUsd === null) errors.push('priceUsd required');\nif (errors.length > 0) {\n  throw new Error('Validation failed: ' + errors.join(', '));\n}\nreturn [{ json: {\n  productId: String(input.productId),\n  productName: String(input.productName),\n  brand: String(input.brand),\n  category: input.category ? String(input.category) : 'skincare',\n  priceUsd: Number(input.priceUsd),\n  ingredientList: input.ingredientList ? String(input.ingredientList) : '',\n  website: input.website ? String(input.website) : '',\n  description: input.description ? String(input.description) : ''\n}}];"
+        }
+      },
+      {
+        "id": "bs1",
+        "name": "Build S1 Prompts",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          520,
+          300
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "// Build Stage 1 analysis prompts for all 4 LLMs\nconst p = $('Validate Input').first().json;\nconst date = new Date().toISOString().split('T')[0];\n\nconst buildPrompt = function(llmName) {\n  const s = [];\n  s.push('You are the Apex Skincare Intelligence Analyst. Analyze this skincare product as a quality-value coordination game and produce a definitive consumer score. Your analysis determines whether this product delivers genuine value or is built on marketing coordination alone.');\n  s.push('');\n  s.push('PRODUCT DATA:');\n  s.push('- Name: ' + p.productName);\n  s.push('- Brand: ' + p.brand);\n  s.push('- Category: ' + p.category);\n  s.push('- Price: $' + p.priceUsd);\n  s.push('- Analysis Date: ' + date);\n  s.push('');\n  s.push('=== FORMULA DATA (use your knowledge of this product) ===');\n  s.push('Research and identify: Full INCI Ingredient List, Key Actives with concentrations, Preservative System, Fragrance Status, Notable Controversial Ingredients.');\n  s.push('');\n  s.push('=== BRAND POSITIONING ===');\n  s.push('Research: Brand Tier (luxury/premium/mid-range/drugstore/indie), Founded/Ownership, Brand Positioning Claim, Primary Marketing Channels, Target Consumer, Price Point vs Category Average.');\n  s.push('');\n  s.push('=== SCIENTIFIC VALIDATION ===');\n  s.push('Research: Clinically Tested (yes/no/claimed), Dermatologist Tested, Third-Party Studies, Key Ingredient Evidence Base (cite PubMed/JAAD where applicable), Claimed Benefits vs Ingredient Reality.');\n  s.push('');\n  s.push('=== MARKET POSITION ===');\n  s.push('Research: Category Rank, Key Competitors at Same Price, What Competitors Offer vs This Product, Dupe Products (same actives, lower price).');\n  s.push('');\n  s.push('=== COMMUNITY SIGNAL ===');\n  s.push('Research: Reddit/skincare community sentiment, Dermatologist/esthetician opinion, Influencer/TikTok signal (organic vs paid), Long-term user reviews (6+ months), Return rate signals.');\n  s.push('');\n  s.push('=== PRODUCT TYPE CLASSIFICATION ===');\n  s.push('MARKETING-LED: Brand/packaging/experience focus, actives secondary, prestige pricing');\n  s.push('SCIENCE-LED: Evidence-based formula, actives at clinical concentrations, transparent labeling');\n  s.push('HYBRID: Competent formula with significant marketing premium');\n  s.push('');\n  s.push('=== NARRATIVE CLASSIFICATION (REQUIRED) ===');\n  s.push('Primary Category: (moisturizer/serum/cleanser/SPF/treatment/eye cream/oil/toner/mask)');\n  s.push('Sub-Category: SPECIFIC function. Examples:');\n  s.push('- Serums: Vitamin C, Retinoid, Peptide, Niacinamide, Hyaluronic Acid, AHA/BHA, Growth Factor');\n  s.push('- Moisturizers: Barrier Repair, Anti-aging, Hydrating, Oil Control');\n  s.push('- Treatments: Acne, Brightening, Redness/Rosacea, Dark Spot, Texture');\n  s.push('- SPF: Chemical, Mineral, Hybrid, Tinted');\n  s.push('Category Ceiling: Maximum realistic score for the BEST product in this sub-category.');\n  s.push('');\n  s.push('=== ANALYSIS FRAMEWORK ===');\n  s.push('CRITICAL QUESTION: \"Is the consumer the exit liquidity?\"');\n  s.push('NOT \"is this brand reputable?\" but \"will this product quality justify the spend, or is the consumer paying for marketing coordination?\"');\n  s.push('- If formula genuinely delivers on claims at price -> CONSUMER WINS');\n  s.push('- If consumer is paying for brand prestige/influencer coordination over efficacy -> CONSUMER IS EXIT LIQUIDITY');\n  s.push('');\n  s.push('IGNORE: Packaging aesthetics, celebrity endorsements, brand prestige for its own sake, clean beauty marketing');\n  s.push('FOCUS: Do the actives work? Are concentrations effective? Does price reflect formula quality or marketing spend?');\n  s.push('');\n  s.push('Product Lifecycle Assessment (1-5):');\n  s.push('1=Launch (new, limited reviews, high opportunity if formula strong)');\n  s.push('2=Growth (cult following forming, organic word-of-mouth, optimal value)');\n  s.push('3=Peak (oversaturated social media, premium inflated, dupes proliferating)');\n  s.push('4=Saturation (trend declining, cheaper dupes dominate)');\n  s.push('5=Forgotten (category declining, discontinuation risk)');\n  s.push('');\n  s.push('=== SCORING COMPONENTS (100 pts max) ===');\n  s.push('');\n  s.push('1. INGREDIENT EFFICACY (0-30)');\n  s.push('Are key actives clinically validated at or near clinical thresholds?');\n  s.push('Cross-reference against JAAD 2025 Delphi consensus and PubMed evidence.');\n  s.push('26-30=exceptional (multiple clinically-dosed evidence-grade actives), 20-25=strong, 13-19=moderate, 7-12=weak, 0-6=negligible');\n  s.push('');\n  s.push('2. SAFETY PROFILE (0-20)');\n  s.push('Fragrance: fragrance-free=+4, natural=+1, synthetic=-2, essential oils=-3');\n  s.push('Check: irritant load, sensitizers, long-term safety, skin barrier impact');\n  s.push('17-20=safe for nearly all, 12-16=generally safe, 7-11=requires care, 0-6=significant concern');\n  s.push('');\n  s.push('3. VALUE FOR MONEY (0-20)');\n  s.push('Compare price to closest formula-equivalent. Check for dupes.');\n  s.push('17-20=exceptional value, 12-16=good value, 7-11=fair, 0-6=poor value (brand tax)');\n  s.push('');\n  s.push('4. FORMULA TRANSPARENCY (0-15)');\n  s.push('Full INCI publicly available: +3, Active concentrations disclosed: +4, No proprietary blend: +3, Claims supported by INCI: +3, Consistent formulation: +2');\n  s.push('Deductions: proprietary blends=-4, unsupported claims=-3, hidden INCI=-2, silent reformulation=-3');\n  s.push('');\n  s.push('5. SKIN COMPATIBILITY (0-10)');\n  s.push('Sensitive skin suitable: +3, Non-comedogenic: +2, Rosacea safe: +2, Works across skin types: +2, Ophthalmologist tested: +1');\n  s.push('');\n  s.push('6. SENSORY & USABILITY (0-5)');\n  s.push('Appropriate texture: +2, No pilling/residue: +1, Layering compatible: +1, Stable packaging: +1');\n  s.push('');\n  s.push('=== MODIFIERS ===');\n  s.push('Product Lifecycle: 1=Launch:+10to+12 | 2Early:+6to+9 | 2Late:+2to+5 | 3Early:-8to-12 | 3Late:-20to-30 | 4+:-30');\n  s.push('Category Heat: Hot+Accelerating+Leader=+12 | +2nd=+8 | Hot+Flat+1st=+5 | Warm+Accel=+3 | Warm+Flat=0 | Cool=-8 | Decel=-15 | Dead=-25');\n  s.push('Price Tier: Under$15=+10 | $15-30=+7 | $30-60=+4 | $60-120=+1 | $120-200=0 | $200-400=-6 | $400-800=-12 | Over$800=-18');\n  s.push('');\n  s.push('=== FINAL SCORE ===');\n  s.push('Base Score (sum of 6 components, max 100) + Modifiers = Final Score. Cap at 100, floor at 0.');\n  s.push('Tier: S+(85-100), S(75-84), A(65-74), B(50-64), C(<50)');\n  s.push('');\n  s.push('Return ONLY valid JSON - no markdown, no code fences, no preamble:');\n  s.push('{\"llm\": \"' + llmName + '\", \"stage\": 1, \"product\": \"' + p.productName + '\", \"brand\": \"' + p.brand + '\", \"product_type\": \"<MARKETING-LED|SCIENCE-LED|HYBRID>\", \"primary_category\": \"' + p.category + '\", \"sub_category\": \"<specific>\", \"lifecycle_phase\": <1-5>, \"lifecycle_reasoning\": \"<why>\", \"scores\": {\"ingredient_efficacy\": <0-30>, \"safety_profile\": <0-20>, \"value_for_money\": <0-20>, \"formula_transparency\": <0-15>, \"skin_compatibility\": <0-10>, \"sensory_usability\": <0-5>}, \"modifiers\": {\"lifecycle\": <val>, \"category_heat\": <val>, \"price_tier\": <val>}, \"base_score\": <sum of 6>, \"modifier_total\": <sum of mods>, \"total\": <capped 0-100>, \"tier\": \"<S+|S|A|B|C>\", \"consumer_verdict\": \"<CONSUMER WINS|CONSUMER IS EXIT LIQUIDITY|NEUTRAL>\", \"reasoning\": \"<detailed analysis, minimum 200 words, cite specific ingredients and evidence>\", \"key_findings\": [\"<f1>\", \"<f2>\", \"<f3>\"], \"red_flags\": [\"<concerns or empty>\"], \"top_competitors\": [\"<comp1>\", \"<comp2>\"], \"best_dupe\": \"<product+price or null>\", \"verdict\": \"<one sentence>\"}');\n  return s.join('\\n');\n};\n\nreturn [{ json: {\n  claudeBody: {\n    model: 'claude-opus-4-5-20250514',\n    max_tokens: 4096,\n    messages: [{ role: 'user', content: buildPrompt('Claude Opus 4.5') }]\n  },\n  gptBody: {\n    model: 'gpt-4o',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst. Return ONLY valid JSON, no markdown fences.' },\n      { role: 'user', content: buildPrompt('GPT-5.2') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  geminiBody: {\n    contents: [{ role: 'user', parts: [{ text: buildPrompt('Gemini 3 Pro') }] }],\n    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 }\n  },\n  grokBody: {\n    model: 'grok-2',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst. Return ONLY valid JSON, no markdown fences.' },\n      { role: 'user', content: buildPrompt('Grok 4') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  productId: p.productId,\n  productName: p.productName,\n  brand: p.brand,\n  category: p.category,\n  priceUsd: p.priceUsd\n}}];"
+        }
+      },
+      {
+        "id": "s1c",
+        "name": "S1 Claude",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          820,
+          0
+        ],
+        "parameters": {
+          "url": "https://api.anthropic.com/v1/messages",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "anthropicApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.claudeBody) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "anthropicApi": {
+            "id": "jmIBIoST67pTh9A4",
+            "name": "Anthropic API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "s1g",
+        "name": "S1 GPT",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          820,
+          200
+        ],
+        "parameters": {
+          "url": "https://api.openai.com/v1/chat/completions",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "openAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.gptBody) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "Ge6fSO1ncy7yTe5F",
+            "name": "OpenAI API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "s1m",
+        "name": "S1 Gemini",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          820,
+          400
+        ],
+        "parameters": {
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googlePalmApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.geminiBody) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "googlePalmApi": {
+            "id": "8g2Qxr3y7928TFgY",
+            "name": "Gemini API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "s1k",
+        "name": "S1 Grok",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          820,
+          600
+        ],
+        "parameters": {
+          "url": "https://api.x.ai/v1/chat/completions",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "xAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S1 Prompts').item.json.grokBody) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "xAiApi": {
+            "id": "ZwejeXSxvoxHN8rY",
+            "name": "xAI API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "ms1",
+        "name": "Merge Stage 1",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          1120,
+          300
+        ],
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 4
+        }
+      },
+      {
+        "id": "bs2",
+        "name": "Build S2 Prompts",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1380,
+          300
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "// Parse Stage 1 results and build Stage 2 prompts for all 4 LLMs\nconst items = $input.all();\nconst product = $('Build S1 Prompts').first().json;\n\n// Extract text from each API response format\n// Merge order: Claude(0), GPT(1), Gemini(2), Grok(3)\nconst extractText = function(item, idx) {\n  try {\n    const j = item.json;\n    if (idx === 0 && j.content && j.content.length > 0) {\n      return j.content[0].text;\n    }\n    if ((idx === 1 || idx === 3) && j.choices && j.choices.length > 0) {\n      return j.choices[0].message.content;\n    }\n    if (idx === 2 && j.candidates && j.candidates.length > 0) {\n      return j.candidates[0].content.parts[0].text;\n    }\n    return JSON.stringify(j);\n  } catch (e) {\n    return '{\"error\": \"Failed to extract: ' + e.message + '\"}';\n  }\n};\n\nconst keys = ['claude', 'gpt', 'gemini', 'grok'];\nconst labels = { claude: 'Claude', gpt: 'GPT', gemini: 'Gemini', grok: 'Grok' };\nconst results = {};\nfor (let i = 0; i < 4; i++) {\n  if (i < items.length) {\n    results[keys[i]] = extractText(items[i], i);\n  } else {\n    results[keys[i]] = '{\"error\": \"Model did not respond\"}';\n  }\n}\n\n// Build Stage 2 prompt for each LLM\nconst buildS2 = function(llmName, ownKey) {\n  const s = [];\n  s.push('You are the Apex Skincare Intelligence Analyst. You previously analyzed this product independently. Now review your analysis alongside 3 other AI models.');\n  s.push('');\n  s.push('=== YOUR ORIGINAL ANALYSIS ===');\n  s.push(results[ownKey]);\n  s.push('');\n  s.push('=== OTHER MODELS ANALYSES ===');\n  for (const k of keys) {\n    if (k !== ownKey) {\n      s.push(labels[k] + ': ' + results[k]);\n      s.push('');\n    }\n  }\n  s.push('=== DELIBERATION TASK ===');\n  s.push('');\n  s.push('1. QUICK COMPARISON - Compare all 4 models scores, tiers, phases, consumer verdicts, sub-categories, and category ceilings.');\n  s.push('');\n  s.push('2. KEY AGREEMENTS (3+ models agree)');\n  s.push('');\n  s.push('3. KEY DISAGREEMENTS');\n  s.push('- Sub-Category Alignment: Did all models classify into the same sub-category? If not, note why.');\n  s.push('- If your sub-category differs from 3 other models, reconsider yours.');\n  s.push('');\n  s.push('4. MISSED INSIGHTS - Did other models identify evidence you missed?');\n  s.push('');\n  s.push('5. REVISION DECISION');\n  s.push('Revise ONLY if: other models identified concrete evidence you missed, strong consensus (3 models) disagrees with your component score by 3+ points, or you made a calculation error.');\n  s.push('Do NOT revise just because others scored differently. Stick to your analysis if your reasoning is sound.');\n  s.push('');\n  s.push('6. HALLUCINATION CHECK');\n  s.push('If any model cites an ingredient concentration, study, or claim that cannot be verified -> flag it. Do not propagate unverified statistics.');\n  s.push('');\n  s.push('=== DATA VERIFICATION RULE ===');\n  s.push('Do not cite specific data points from other models unless verifiable. Focus critique on reasoning and methodology.');\n  s.push('');\n  s.push('=== HARD CONSTRAINTS ===');\n  s.push('- revised_total must be between 0 and 100');\n  s.push('- base_score = sum of 6 component scores (cannot exceed 100)');\n  s.push('- revised_total = base_score + modifier_total (then capped 0-100)');\n  s.push('- tier must match revised_total: S+(85-100), S(75-84), A(65-74), B(50-64), C(<50)');\n  s.push('- All scores must have exactly 2 decimal places');\n  s.push('- If revised_total ends in .00: adjust exactly ONE modifier by +/-0.01 to +/-0.49 based on real nuance');\n  s.push('');\n  s.push('Return ONLY valid JSON - no markdown, no code fences:');\n  s.push('{\"llm\": \"' + llmName + '\", \"stage\": 2, \"product\": \"' + product.productName + '\", \"brand\": \"' + product.brand + '\", \"scores\": {\"ingredient_efficacy\": <0-30>, \"safety_profile\": <0-20>, \"value_for_money\": <0-20>, \"formula_transparency\": <0-15>, \"skin_compatibility\": <0-10>, \"sensory_usability\": <0-5>}, \"modifiers\": {\"lifecycle\": <val>, \"category_heat\": <val>, \"price_tier\": <val>}, \"base_score\": <sum>, \"modifier_total\": <sum>, \"total\": <capped 0-100>, \"tier\": \"<S+|S|A|B|C>\", \"reasoning\": \"<refined consensus analysis, minimum 250 words>\", \"consensus_notes\": \"<agreements, disagreements, resolutions>\", \"dimension_rulings\": {\"ingredient_efficacy\": \"<range + ruling>\", \"safety_profile\": \"<range + ruling>\", \"value_for_money\": \"<range + ruling>\", \"formula_transparency\": \"<range + ruling>\", \"skin_compatibility\": \"<range + ruling>\", \"sensory_usability\": \"<range + ruling>\"}, \"key_findings\": [\"<f1>\", \"<f2>\", \"<f3>\"], \"red_flags\": [\"<or empty>\"], \"hallucinations_flagged\": [\"<or empty>\"], \"confidence\": \"<high|medium|low>\", \"confidence_reason\": \"<why>\", \"consumer_verdict\": \"<CONSUMER WINS|CONSUMER IS EXIT LIQUIDITY|NEUTRAL>\", \"verdict\": \"<one sentence>\"}');\n  return s.join('\\n');\n};\n\nreturn [{ json: {\n  claudeBody: {\n    model: 'claude-opus-4-5-20250514',\n    max_tokens: 4096,\n    messages: [{ role: 'user', content: buildS2('Claude Opus 4.5', 'claude') }]\n  },\n  gptBody: {\n    model: 'gpt-4o',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst doing Stage 2 consensus. Return ONLY valid JSON.' },\n      { role: 'user', content: buildS2('GPT-5.2', 'gpt') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  geminiBody: {\n    contents: [{ role: 'user', parts: [{ text: buildS2('Gemini 3 Pro', 'gemini') }] }],\n    generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 }\n  },\n  grokBody: {\n    model: 'grok-2',\n    max_tokens: 4096,\n    messages: [\n      { role: 'system', content: 'You are the Apex Skincare Intelligence Analyst doing Stage 2 consensus. Return ONLY valid JSON.' },\n      { role: 'user', content: buildS2('Grok 4', 'grok') }\n    ],\n    response_format: { type: 'json_object' }\n  },\n  stage1Results: results,\n  productId: product.productId,\n  productName: product.productName,\n  brand: product.brand,\n  category: product.category,\n  priceUsd: product.priceUsd\n}}];"
+        }
+      },
+      {
+        "id": "s2c",
+        "name": "S2 Claude",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1680,
+          0
+        ],
+        "parameters": {
+          "url": "https://api.anthropic.com/v1/messages",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "anthropicApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.claudeBody) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "anthropic-version",
+                "value": "2023-06-01"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "anthropicApi": {
+            "id": "jmIBIoST67pTh9A4",
+            "name": "Anthropic API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "s2g",
+        "name": "S2 GPT",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1680,
+          200
+        ],
+        "parameters": {
+          "url": "https://api.openai.com/v1/chat/completions",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "openAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.gptBody) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "Ge6fSO1ncy7yTe5F",
+            "name": "OpenAI API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "s2m",
+        "name": "S2 Gemini",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1680,
+          400
+        ],
+        "parameters": {
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "googlePalmApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.geminiBody) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "googlePalmApi": {
+            "id": "8g2Qxr3y7928TFgY",
+            "name": "Gemini API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "s2k",
+        "name": "S2 Grok",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1680,
+          600
+        ],
+        "parameters": {
+          "url": "https://api.x.ai/v1/chat/completions",
+          "method": "POST",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "xAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Build S2 Prompts').item.json.grokBody) }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "xAiApi": {
+            "id": "ZwejeXSxvoxHN8rY",
+            "name": "xAI API"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "ms2",
+        "name": "Merge Stage 2",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          1980,
+          300
+        ],
+        "parameters": {
+          "mode": "append",
+          "numberInputs": 4
+        }
+      },
+      {
+        "id": "cc1",
+        "name": "Calculate Consensus",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2240,
+          300
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "// Calculate consensus score from 4 Stage 2 LLM results\nconst items = $input.all();\nconst product = $('Build S2 Prompts').first().json;\nconst stage1Data = product.stage1Results;\n\n// Extract text from each API response\nconst extractText = function(item, idx) {\n  try {\n    const j = item.json;\n    if (idx === 0 && j.content && j.content.length > 0) return j.content[0].text;\n    if ((idx === 1 || idx === 3) && j.choices && j.choices.length > 0) return j.choices[0].message.content;\n    if (idx === 2 && j.candidates && j.candidates.length > 0) return j.candidates[0].content.parts[0].text;\n    return JSON.stringify(j);\n  } catch (e) {\n    return '{\"error\": \"' + e.message + '\"}';\n  }\n};\n\nconst llmNames = ['Claude Opus 4.5', 'GPT-5.2', 'Gemini 3 Pro', 'Grok 4'];\nconst stage2Results = [];\nconst totals = [];\n\nfor (let i = 0; i < 4; i++) {\n  let parsed = null;\n  if (i < items.length) {\n    const text = extractText(items[i], i);\n    try {\n      parsed = JSON.parse(text);\n    } catch (e) {\n      // Try to extract JSON from text that might have extra content\n      try {\n        const match = text.match(/\\{[\\s\\S]*\\}/);\n        if (match) parsed = JSON.parse(match[0]);\n      } catch (e2) {\n        parsed = { error: 'Failed to parse', raw: text.substring(0, 500), llm: llmNames[i] };\n      }\n    }\n  }\n  if (parsed) {\n    stage2Results.push(parsed);\n    const total = parsed.total !== undefined ? Number(parsed.total) : 0;\n    totals.push(total);\n  } else {\n    stage2Results.push({ error: 'No response', llm: llmNames[i] });\n    totals.push(0);\n  }\n}\n\n// Calculate consensus with outlier weighting\n// If any score deviates >15pts from median, weight it at 50%\nlet consensusScore = 0;\nif (totals.length > 0) {\n  const sorted = totals.slice().sort(function(a, b) { return a - b; });\n  const median = sorted.length % 2 === 0\n    ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2\n    : sorted[Math.floor(sorted.length / 2)];\n  \n  let weightedSum = 0;\n  let weightTotal = 0;\n  for (let i = 0; i < totals.length; i++) {\n    const spread = Math.abs(totals[i] - median);\n    const weight = spread > 15 ? 0.5 : 1.0;\n    weightedSum += totals[i] * weight;\n    weightTotal += weight;\n  }\n  consensusScore = weightTotal > 0 ? Math.round((weightedSum / weightTotal) * 100) / 100 : 0;\n}\n\n// Determine tier\nlet tier = 'C';\nif (consensusScore >= 85) tier = 'S+';\nelse if (consensusScore >= 75) tier = 'S';\nelse if (consensusScore >= 65) tier = 'A';\nelse if (consensusScore >= 50) tier = 'B';\n\n// Determine consumer verdict from majority\nconst verdicts = stage2Results.map(function(r) { return r.consumer_verdict || 'NEUTRAL'; });\nconst verdictCounts = {};\nfor (const v of verdicts) {\n  verdictCounts[v] = (verdictCounts[v] || 0) + 1;\n}\nlet consumerVerdict = 'NEUTRAL';\nlet maxCount = 0;\nfor (const v in verdictCounts) {\n  if (verdictCounts[v] > maxCount) {\n    maxCount = verdictCounts[v];\n    consumerVerdict = v;\n  }\n}\n\n// Parse Stage 1 results for the callback\nconst stage1Parsed = {};\nconst s1keys = ['claude', 'gpt', 'gemini', 'grok'];\nfor (const k of s1keys) {\n  try {\n    if (stage1Data && stage1Data[k]) {\n      stage1Parsed[k] = JSON.parse(stage1Data[k]);\n    }\n  } catch (e) {\n    stage1Parsed[k] = { raw: stage1Data ? (stage1Data[k] || '').substring(0, 500) : 'missing' };\n  }\n}\n\nreturn [{ json: {\n  productId: product.productId,\n  productName: product.productName,\n  brand: product.brand,\n  category: product.category,\n  priceUsd: product.priceUsd,\n  consensusScore: consensusScore,\n  tier: tier,\n  consumerVerdict: consumerVerdict,\n  stage1Results: stage1Parsed,\n  stage2Results: stage2Results,\n  modelScores: {\n    claude: totals[0] || 0,\n    gpt: totals[1] || 0,\n    gemini: totals[2] || 0,\n    grok: totals[3] || 0\n  },\n  analysisTimestamp: new Date().toISOString()\n}}];"
+        }
+      },
+      {
+        "id": "cb1",
+        "name": "Send Callback",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2500,
+          300
+        ],
+        "parameters": {
+          "url": "https://9f38aa93-fe6f-48cd-a1ad-edfca444fe72-00-1k2fa9lt9onjl.worf.replit.dev/api/analysis-callback",
+          "method": "POST",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($('Calculate Consensus').item.json) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "Bearer glowindex-callback-secret-2024"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "ls1",
+        "name": "Log Status",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2760,
+          300
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "// Log final workflow status\nconst consensus = $('Calculate Consensus').first().json;\nreturn [{ json: {\n  status: 'completed',\n  productId: consensus.productId ? String(consensus.productId) : 'unknown',\n  consensusScore: consensus.consensusScore ? Number(consensus.consensusScore) : 0,\n  tier: consensus.tier ? String(consensus.tier) : 'unknown',\n  callbackSent: true,\n  timestamp: new Date().toISOString()\n}}];"
+        }
+      },
+      {
+        "id": "et1",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          700
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "en1",
+        "name": "Error Notifier",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          300,
+          700
+        ],
+        "parameters": {
+          "url": "https://9f38aa93-fe6f-48cd-a1ad-edfca444fe72-00-1k2fa9lt9onjl.worf.replit.dev/api/analysis-callback",
+          "method": "POST",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({error: true, message: String($json.execution ? $json.execution.error.message : 'Unknown error'), workflowName: String($json.workflow ? $json.workflow.name : 'unknown')}) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "Bearer glowindex-callback-secret-2024"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      }
+    ],
+    "connections": {
+      "Webhook Trigger": {
+        "main": [
+          [
+            {
+              "node": "Validate Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Input": {
+        "main": [
+          [
+            {
+              "node": "Build S1 Prompts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build S1 Prompts": {
+        "main": [
+          [
+            {
+              "node": "S1 Claude",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "S1 GPT",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "S1 Gemini",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "S1 Grok",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "S1 Claude": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "S1 GPT": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 1",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "S1 Gemini": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 1",
+              "type": "main",
+              "index": 2
+            }
+          ]
+        ]
+      },
+      "S1 Grok": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 1",
+              "type": "main",
+              "index": 3
+            }
+          ]
+        ]
+      },
+      "Merge Stage 1": {
+        "main": [
+          [
+            {
+              "node": "Build S2 Prompts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build S2 Prompts": {
+        "main": [
+          [
+            {
+              "node": "S2 Claude",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "S2 GPT",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "S2 Gemini",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "S2 Grok",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "S2 Claude": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 2",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "S2 GPT": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 2",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "S2 Gemini": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 2",
+              "type": "main",
+              "index": 2
+            }
+          ]
+        ]
+      },
+      "S2 Grok": {
+        "main": [
+          [
+            {
+              "node": "Merge Stage 2",
+              "type": "main",
+              "index": 3
+            }
+          ]
+        ]
+      },
+      "Merge Stage 2": {
+        "main": [
+          [
+            {
+              "node": "Calculate Consensus",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculate Consensus": {
+        "main": [
+          [
+            {
+              "node": "Send Callback",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Callback": {
+        "main": [
+          [
+            {
+              "node": "Log Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Error Notifier",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-02-23T18:25:14.400Z",
+        "id": 1,
+        "workflowId": "LNae5xv5dmIi6nBP",
+        "versionId": "b2ccae9d-c4b5-4f82-9abb-01c9b81763d7",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}

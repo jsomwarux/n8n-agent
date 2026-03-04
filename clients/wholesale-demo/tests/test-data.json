@@ -1,0 +1,57 @@
+{
+  "test_cases": [
+    {
+      "id": "test-1",
+      "name": "Standard Daily Reorder Check",
+      "description": "Normal business day scheduled inventory check - should identify 9 items needing reorder across 5 suppliers",
+      "payload": {
+        "trigger": "scheduled",
+        "triggered_by": "daily-9am",
+        "date": "2026-03-04"
+      },
+      "expected": {
+        "reorder_count": 9,
+        "critical_items": "ELC-001 (Wire Connectors), CLN-002 (Mop Heads)",
+        "suppliers_contacted": 5,
+        "email_sent": true,
+        "sheets_logged": true,
+        "slack_notified": true
+      },
+      "curl_command": "curl -s -X POST http://localhost:5678/webhook/inventory-reorder -H \"Content-Type: application/json\" -d '{\"trigger\": \"scheduled\", \"triggered_by\": \"daily-9am\", \"date\": \"2026-03-04\"}'"
+    },
+    {
+      "id": "test-2",
+      "name": "Manual Spot Check",
+      "description": "Manual trigger for ad-hoc inventory verification",
+      "payload": {
+        "trigger": "manual",
+        "triggered_by": "ops-manager",
+        "date": "2026-03-04"
+      },
+      "expected": {
+        "reorder_count": 9,
+        "same_results_as_test_1": true
+      },
+      "curl_command": "curl -s -X POST http://localhost:5678/webhook/inventory-reorder -H \"Content-Type: application/json\" -d '{\"trigger\": \"manual\", \"triggered_by\": \"ops-manager\", \"date\": \"2026-03-04\"}'"
+    }
+  ],
+  "expected_reorder_items": [
+    {"sku": "SAF-001", "name": "Hard Hats (Class E)", "current": 12, "threshold": 25, "urgency": "high"},
+    {"sku": "SAF-002", "name": "Cut-Resistant Gloves (L)", "current": 8, "threshold": 30, "urgency": "high"},
+    {"sku": "SAF-004", "name": "Safety Glasses (ANSI Z87)", "current": 6, "threshold": 40, "urgency": "critical"},
+    {"sku": "PKG-001", "name": "Stretch Wrap Film (18\")", "current": 3, "threshold": 10, "urgency": "high"},
+    {"sku": "PKG-003", "name": "Corrugated Boxes (12x12x12)", "current": 4, "threshold": 20, "urgency": "critical"},
+    {"sku": "CLN-002", "name": "Microfiber Mop Heads", "current": 2, "threshold": 12, "urgency": "critical"},
+    {"sku": "CLN-003", "name": "Paper Towels (Case/30 rolls)", "current": 8, "threshold": 8, "urgency": "medium"},
+    {"sku": "PWR-002", "name": "Reciprocating Saw Blades (10-pk)", "current": 5, "threshold": 15, "urgency": "high"},
+    {"sku": "ELC-001", "name": "Wire Connectors (100-pk)", "current": 1, "threshold": 20, "urgency": "critical"}
+  ],
+  "items_not_needing_reorder": [
+    {"sku": "SAF-003", "name": "Safety Vests (Hi-Vis Orange)", "current": 45, "threshold": 20},
+    {"sku": "PKG-002", "name": "Shipping Tape (2\" x 110 yd)", "current": 22, "threshold": 15},
+    {"sku": "CLN-001", "name": "Industrial Degreaser (Gal)", "current": 15, "threshold": 10},
+    {"sku": "PWR-001", "name": "Drill Bits Set (29-pc)", "current": 18, "threshold": 10},
+    {"sku": "PWR-003", "name": "Extension Cords (50ft, 12 AWG)", "current": 9, "threshold": 8},
+    {"sku": "ELC-002", "name": "Electrical Tape (10-pk)", "current": 14, "threshold": 10}
+  ]
+}
