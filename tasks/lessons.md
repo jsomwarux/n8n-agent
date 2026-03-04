@@ -53,4 +53,12 @@
 
 24. - [construction-demo]: **n8n PUT /workflows/{id} body must contain ONLY: name, nodes, connections, settings, staticData** — sending any additional top-level fields (id, createdAt, updatedAt, active, etc.) returns "request/body must NOT have additional properties". Always strip the response object down to these five fields before PUT.
 
-25. - [construction-demo]: **Always fetch a fresh copy of the workflow immediately before making changes** — never reuse a previously saved local file. Each fix must start with a fresh API fetch, or earlier fixes already pushed will be silently overwritten by the stale local version.
+25. - [construction-demo]: **Always fetch a fresh copy of the workflow immediately before making changes**
+
+26. - [wholesale-demo]: **n8n API responses for workflows containing Code nodes include raw tab/newline characters inside jsCode strings** — these are valid JSON escape sequences within the code but cause Python's `json.load()` to throw "Invalid control character" errors. Fix: read the raw bytes, run `re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', ' ', raw)` before parsing. Always use this pattern when fetching workflows with Code nodes.
+
+27. - [wholesale-demo]: **Setting `authentication: "genericCredentialType"` without a matching credential defined causes HTTP Request nodes to silently fail** — use `authentication: "none"` and pass API keys explicitly via `headerParameters` when you don't have an n8n credential object for the service. This is the correct pattern for OpenRouter, Slack, and any other service where the key is embedded directly.
+
+28. - [wholesale-demo]: **Google Sheets append fails with column mismatch when a sheet tab already has different column headers** — if the tab has Construction Demo columns (Job ID, Customer Name...) and you try to append Wholesale Demo columns (PO Number, Supplier...), n8n errors. Fix: target a different named tab per workflow (e.g. "Wholesale PO Log"). Set `onError: continueRegularOutput` on the Sheets node so the workflow completes for demo purposes even before the tab is created.
+
+29. - [wholesale-demo]: **New Google Sheets tab must be created manually before first append** — n8n's Sheets `append` operation cannot create a new tab; it only writes to an existing one. When targeting a new tab name ("Wholesale PO Log"), the tab must exist in the spreadsheet first. Manual step: open the sheet, click + to add tab, name it correctly, add header row. Alternative: set `continueOnFail` so demo runs to Slack/Gmail regardless. — never reuse a previously saved local file. Each fix must start with a fresh API fetch, or earlier fixes already pushed will be silently overwritten by the stale local version.
