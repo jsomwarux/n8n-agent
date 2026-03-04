@@ -1,0 +1,150 @@
+{
+  "description": "Test data for AI Lead Qualification & CRM Entry workflow",
+  "workflow_name": "AI Lead Qualification & CRM Entry — Property Management",
+  "webhook_path": "/webhook/new-lead",
+  "base_url": "http://localhost:5678",
+
+  "test_cases": [
+    {
+      "id": 1,
+      "name": "Hot Lead - Sarah Chen",
+      "description": "High-value prospect with 28 units, strong budget, urgent timeline. Expected score: 8-10",
+      "expected_tier": "hot",
+      "expected_score_range": [8, 10],
+      "expected_actions": [
+        "HubSpot contact created",
+        "Personalized hot lead email sent",
+        "Slack alert posted",
+        "Lead logged to Google Sheets"
+      ],
+      "payload": {
+        "first_name": "Sarah",
+        "last_name": "Chen",
+        "email": "jtsomwaru+sarah.chen@gmail.com",
+        "phone": "212-555-0147",
+        "company": "Chen Property Group",
+        "portfolio_size": 28,
+        "monthly_budget": 4500,
+        "primary_need": "AI-powered tenant screening and lease management automation",
+        "timeline": "Ready to start within 2 weeks",
+        "current_pain": "Manually reviewing 50+ applications per month. Losing good tenants to faster landlords.",
+        "property_type": "Residential multifamily",
+        "location": "Brooklyn, NY",
+        "heard_about_us": "LinkedIn post"
+      },
+      "curl_command": "curl -X POST http://localhost:5678/webhook/new-lead \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"first_name\": \"Sarah\",\n    \"last_name\": \"Chen\",\n    \"email\": \"jtsomwaru+sarah.chen@gmail.com\",\n    \"phone\": \"212-555-0147\",\n    \"company\": \"Chen Property Group\",\n    \"portfolio_size\": 28,\n    \"monthly_budget\": 4500,\n    \"primary_need\": \"AI-powered tenant screening and lease management automation\",\n    \"timeline\": \"Ready to start within 2 weeks\",\n    \"current_pain\": \"Manually reviewing 50+ applications per month. Losing good tenants to faster landlords.\",\n    \"property_type\": \"Residential multifamily\",\n    \"location\": \"Brooklyn, NY\",\n    \"heard_about_us\": \"LinkedIn post\"\n  }'",
+      "expected_output": {
+        "status": "success",
+        "tier": "hot",
+        "actions_taken": ["HubSpot contact created", "Personalized hot lead email sent", "Slack alert posted", "Lead logged to Google Sheets"],
+        "scoring_rationale": "Strong budget ($4,500/mo exceeds $2,000 threshold), large portfolio (28 units exceeds 10-unit target), high urgency (2-week timeline), perfect service match (AI tenant screening + lease automation), clear decision-maker signals (company name, specific pain points about losing tenants)"
+      }
+    },
+    {
+      "id": 2,
+      "name": "Warm Lead - Marcus Reeves",
+      "description": "Mid-range prospect with 9 units, moderate budget, exploring options. Expected score: 5-7",
+      "expected_tier": "warm",
+      "expected_score_range": [5, 7],
+      "expected_actions": [
+        "Nurture email sent",
+        "Lead logged to Google Sheets"
+      ],
+      "payload": {
+        "first_name": "Marcus",
+        "last_name": "Reeves",
+        "email": "jtsomwaru+marcus.reeves@gmail.com",
+        "phone": "718-555-0203",
+        "company": "Reeves Holdings LLC",
+        "portfolio_size": 9,
+        "monthly_budget": 1800,
+        "primary_need": "Maintenance request tracking and vendor coordination",
+        "timeline": "Exploring options for Q2",
+        "current_pain": "Spreadsheets are getting unmanageable with 9 units.",
+        "property_type": "Mixed residential/commercial",
+        "location": "Queens, NY",
+        "heard_about_us": "Google search"
+      },
+      "curl_command": "curl -X POST http://localhost:5678/webhook/new-lead \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"first_name\": \"Marcus\",\n    \"last_name\": \"Reeves\",\n    \"email\": \"jtsomwaru+marcus.reeves@gmail.com\",\n    \"phone\": \"718-555-0203\",\n    \"company\": \"Reeves Holdings LLC\",\n    \"portfolio_size\": 9,\n    \"monthly_budget\": 1800,\n    \"primary_need\": \"Maintenance request tracking and vendor coordination\",\n    \"timeline\": \"Exploring options for Q2\",\n    \"current_pain\": \"Spreadsheets are getting unmanageable with 9 units.\",\n    \"property_type\": \"Mixed residential/commercial\",\n    \"location\": \"Queens, NY\",\n    \"heard_about_us\": \"Google search\"\n  }'",
+      "expected_output": {
+        "status": "success",
+        "tier": "warm",
+        "actions_taken": ["Nurture email sent", "Lead logged to Google Sheets"],
+        "scoring_rationale": "Moderate budget ($1,800/mo just below $2,000 threshold), portfolio slightly under target (9 units vs 10), medium urgency (Q2 timeline), moderate service match (maintenance tracking is secondary offering), has company name but pain point less specific"
+      }
+    },
+    {
+      "id": 3,
+      "name": "Cold Lead - Tom Nguyen",
+      "description": "Low-value prospect with 2 units, low budget, just curious. Expected score: 1-4",
+      "expected_tier": "cold",
+      "expected_score_range": [1, 4],
+      "expected_actions": [
+        "Nurture email sent",
+        "Lead logged to Google Sheets"
+      ],
+      "payload": {
+        "first_name": "Tom",
+        "last_name": "Nguyen",
+        "email": "jtsomwaru+tom.nguyen@gmail.com",
+        "phone": "347-555-0088",
+        "company": "Self-managed",
+        "portfolio_size": 2,
+        "monthly_budget": 500,
+        "primary_need": "Just curious about AI tools",
+        "timeline": "No specific timeline",
+        "current_pain": "Managing my 2 units myself, wondering if AI can help.",
+        "property_type": "Residential",
+        "location": "Bronx, NY",
+        "heard_about_us": "Friend referral"
+      },
+      "curl_command": "curl -X POST http://localhost:5678/webhook/new-lead \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"first_name\": \"Tom\",\n    \"last_name\": \"Nguyen\",\n    \"email\": \"jtsomwaru+tom.nguyen@gmail.com\",\n    \"phone\": \"347-555-0088\",\n    \"company\": \"Self-managed\",\n    \"portfolio_size\": 2,\n    \"monthly_budget\": 500,\n    \"primary_need\": \"Just curious about AI tools\",\n    \"timeline\": \"No specific timeline\",\n    \"current_pain\": \"Managing my 2 units myself, wondering if AI can help.\",\n    \"property_type\": \"Residential\",\n    \"location\": \"Bronx, NY\",\n    \"heard_about_us\": \"Friend referral\"\n  }'",
+      "expected_output": {
+        "status": "success",
+        "tier": "cold",
+        "actions_taken": ["Nurture email sent", "Lead logged to Google Sheets"],
+        "scoring_rationale": "Weak budget ($500/mo well below threshold), very small portfolio (2 units), no urgency (no timeline), vague service interest (just curious), no clear decision-maker signals (self-managed, no specific pain)"
+      }
+    }
+  ],
+
+  "scoring_criteria": {
+    "budget_fit": {
+      "strong": "$2,000+/mo (0-3 points)",
+      "moderate": "$1,000-1,999/mo",
+      "weak": "<$1,000/mo"
+    },
+    "portfolio_size": {
+      "strong": "10+ units (0-2 points)",
+      "moderate": "5-9 units",
+      "weak": "<5 units"
+    },
+    "urgency": {
+      "high": "Immediate/2 weeks (0-2 points)",
+      "medium": "This quarter/Q2",
+      "low": "No timeline/exploring"
+    },
+    "service_match": {
+      "high": "AI automation, tenant screening, lease ops (0-2 points)",
+      "medium": "Maintenance, vendor coordination",
+      "low": "General curiosity"
+    },
+    "decision_maker_signals": {
+      "present": "Company name + specific pain points (0-1 point)",
+      "absent": "Self-managed, vague needs"
+    },
+    "tier_rules": {
+      "hot": "8-10 points",
+      "warm": "5-7 points",
+      "cold": "1-4 points"
+    }
+  },
+
+  "validation_notes": [
+    "Hot leads (score >= 7) trigger: HubSpot contact creation, personalized email, Slack alert, Sheets logging",
+    "Warm/Cold leads (score < 7) trigger: Nurture email, Sheets logging only",
+    "All test emails use jtsomwaru+[name]@gmail.com format for easy tracking",
+    "Slack alerts go to the configured webhook for real-time notification",
+    "Google Sheets logging uses 'Lead Log' tab with standardized columns"
+  ]
+}
