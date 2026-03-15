@@ -1,0 +1,286 @@
+{
+  "name": "Construction Job Progress Tracker — T2 Template",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Webhook: Foreman Update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "construction-job-tracker-webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "construction-job-tracker",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "code-parse",
+      "name": "Parse & Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "jsCode": "// Parse incoming foreman update from Tally/Typeform/direct JSON\n// Normalize fields and build AI classification prompt\nconst raw = $input.item.json.body || $input.item.json;\n\nlet jobSite = '';\nlet percentComplete = 0;\nlet blockers = '';\nlet photoUrl = '';\nlet foremanName = '';\nlet foremanNote = '';\n\ntry {\n  if (raw.fields && Array.isArray(raw.fields)) {\n    // Tally format: fields array with label/value pairs\n    const f = raw.fields;\n    const find = (keyword) => {\n      const match = f.find(x => x.label && x.label.toLowerCase().includes(keyword));\n      return match ? String(match.value || '') : '';\n    };\n    jobSite = find('job') || find('site') || find('project');\n    percentComplete = parseInt(find('percent') || find('complete') || find('progress') || '0');\n    blockers = find('block') || find('issue');\n    photoUrl = find('photo') || find('image');\n    foremanName = find('foreman') || find('name');\n    foremanNote = find('note') || find('update') || find('comment');\n  } else {\n    // Direct JSON format\n    jobSite = raw.job_site || raw.jobSite || raw.project || '';\n    percentComplete = parseInt(raw.percent_complete || raw.percentComplete || raw.progress || '0');\n    blockers = raw.blockers || raw.blocker || raw.issues || '';\n    photoUrl = raw.photo_url || raw.photoUrl || raw.photo || '';\n    foremanName = raw.foreman_name || raw.foremanName || raw.foreman || '';\n    foremanNote = raw.foreman_note || raw.foremanNote || raw.note || raw.notes || raw.update || '';\n  }\n} catch (e) {\n  jobSite = raw.job_site || '';\n  percentComplete = parseInt(raw.percent_complete || '0');\n  blockers = raw.blockers || '';\n  photoUrl = raw.photo_url || '';\n  foremanName = raw.foreman_name || '';\n  foremanNote = raw.foreman_note || '';\n}\n\nconst prompt = 'You are an AI assistant for a construction company. Analyze this foreman daily update and return ONLY valid JSON.\\n\\n' +\n  'Job Site: ' + jobSite + '\\n' +\n  'Percent Complete: ' + percentComplete + '%\\n' +\n  'Blockers: ' + (blockers || 'None reported') + '\\n' +\n  'Foreman Note: ' + (foremanNote || 'No additional notes') + '\\n\\n' +\n  'Return JSON with these exact fields:\\n' +\n  '{\\n' +\n  '  \"status\": \"on_track\" or \"at_risk\" or \"blocked\",\\n' +\n  '  \"foreman_summary\": \"one sentence summary of the update\",\\n' +\n  '  \"client_summary\": \"professional 2-3 sentence summary for the property owner. No internal details. Focus on progress and next steps.\",\\n' +\n  '  \"next_milestone\": \"what happens next on this job\",\\n' +\n  '  \"risk_factors\": [\"array of risk factors\"],\\n' +\n  '  \"reasoning\": \"why you classified this status\"\\n' +\n  '}\\n\\n' +\n  'Rules:\\n' +\n  '- \"blocked\" = explicit blocker (permits, materials, weather, inspection fail)\\n' +\n  '- \"at_risk\" = behind schedule, vague concerns, potential delays\\n' +\n  '- \"on_track\" = normal progress, no blockers, on or ahead of schedule';\n\nreturn [{ json: {\n  job_site: jobSite,\n  percent_complete: percentComplete,\n  blockers: blockers,\n  photo_url: photoUrl,\n  foreman_name: foremanName,\n  foreman_note: foremanNote,\n  received_at: new Date().toISOString(),\n  prompt: prompt\n}}];"
+      }
+    },
+    {
+      "id": "http-claude",
+      "name": "AI Triage (Claude)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "sk-ant-CONFIGURE-YOUR-ANTHROPIC-KEY-HERE" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"claude-sonnet-4-20250514\", \"max_tokens\": 500, \"messages\": [{ \"role\": \"user\", \"content\": $json.prompt }] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "code-process",
+      "name": "Process AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "parameters": {
+        "jsCode": "// CANONICAL NODE — all downstream nodes reference this\n// Parse Claude response and build all downstream data\nconst response = $('AI Triage (Claude)').item.json;\nconst input = $('Parse & Build Prompt').item.json;\n\nlet parsed;\ntry {\n  const content = (response.content && response.content[0]) ? response.content[0].text : '';\n  const match = content.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(match ? match[0] : content);\n} catch (e) {\n  // Fallback if AI response cannot be parsed\n  parsed = {\n    status: input.blockers ? 'blocked' : 'on_track',\n    foreman_summary: input.foreman_note || 'Update received',\n    client_summary: 'Work is progressing on ' + input.job_site + '. Currently at ' + input.percent_complete + '% completion.',\n    next_milestone: 'Continued progress expected',\n    risk_factors: input.blockers ? [input.blockers] : [],\n    reasoning: 'Fallback — AI response could not be parsed'\n  };\n}\n\nconst status = parsed.status || 'on_track';\nconst clientSummary = parsed.client_summary || 'Update received for ' + input.job_site;\nconst foremanSummary = parsed.foreman_summary || input.foreman_note;\nconst nextMilestone = parsed.next_milestone || 'TBD';\nconst riskFactors = Array.isArray(parsed.risk_factors) ? parsed.risk_factors : [];\n\n// Pre-build client email content\nconst clientEmailSubject = input.job_site + ' — Job Update (' + input.percent_complete + '% Complete)';\nconst clientEmailBody = '<h2>Job Progress Update</h2>' +\n  '<p><b>Project:</b> ' + input.job_site + '</p>' +\n  '<p><b>Status:</b> ' + status.replace('_', ' ').toUpperCase() + '</p>' +\n  '<p><b>Progress:</b> ' + input.percent_complete + '% complete</p>' +\n  '<p>' + clientSummary + '</p>' +\n  '<p><b>Next Milestone:</b> ' + nextMilestone + '</p>' +\n  '<hr><p style=\"color:#888;font-size:12px;\">This update was generated automatically from your contractor\\'s daily report.</p>';\n\n// Pre-build owner alert content (used only if blocked)\nconst ownerAlertSubject = 'BLOCKED: ' + input.job_site + ' — Immediate Attention Required';\nconst ownerAlertBody = '<h2 style=\"color:red;\">Job Blocked — ' + input.job_site + '</h2>' +\n  '<p><b>Foreman:</b> ' + input.foreman_name + '</p>' +\n  '<p><b>Blocker:</b> ' + (input.blockers || 'See details below') + '</p>' +\n  '<p><b>Progress at block:</b> ' + input.percent_complete + '%</p>' +\n  '<p><b>Foreman Note:</b> ' + foremanSummary + '</p>' +\n  (riskFactors.length > 0 ? '<p><b>Risk Factors:</b> ' + riskFactors.join(', ') + '</p>' : '') +\n  '<hr><p>Take action to unblock this job.</p>';\n\nreturn [{ json: {\n  job_site: input.job_site,\n  percent_complete: input.percent_complete,\n  blockers: input.blockers,\n  photo_url: input.photo_url,\n  foreman_name: input.foreman_name,\n  foreman_note: input.foreman_note,\n  received_at: input.received_at,\n  status: status,\n  foreman_summary: foremanSummary,\n  client_summary: clientSummary,\n  next_milestone: nextMilestone,\n  risk_factors: riskFactors,\n  ai_reasoning: parsed.reasoning || '',\n  client_email_subject: clientEmailSubject,\n  client_email_body: clientEmailBody,\n  owner_alert_subject: ownerAlertSubject,\n  owner_alert_body: ownerAlertBody,\n  processed_at: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "code-prep-sheets",
+      "name": "Prep Sheets Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0],
+      "parameters": {
+        "jsCode": "// Build flat row for Google Sheets append\n// Keys must match sheet tab header row exactly\nconst d = $('Process AI Response').item.json;\nreturn [{ json: {\n  'Date': new Date().toISOString().split('T')[0],\n  'Job Site': d.job_site || '',\n  'Foreman': d.foreman_name || '',\n  'Percent Complete': String(d.percent_complete || 0),\n  'Status': (d.status || '').toUpperCase(),\n  'Foreman Note': (d.foreman_summary || '').substring(0, 200),\n  'Client Summary': (d.client_summary || '').substring(0, 200),\n  'Blockers': d.blockers || 'None',\n  'Client Notified': 'Yes',\n  'Photo URL': d.photo_url || ''\n}}];"
+      }
+    },
+    {
+      "id": "sheets-log",
+      "name": "Log Job Update",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1100, 0],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Sheets account"
+        }
+      },
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "CONFIGURE-YOUR-GOOGLE-SHEET-ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Job Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-prep-client-email",
+      "name": "Prep Client Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 0],
+      "parameters": {
+        "jsCode": "// Prep client notification email\n// References canonical Process AI Response node\nconst d = $('Process AI Response').item.json;\nreturn [{ json: {\n  send_to: 'client@example.com',\n  email_subject: d.client_email_subject,\n  email_body: d.client_email_body\n}}];"
+      }
+    },
+    {
+      "id": "gmail-client",
+      "name": "Notify Client",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1540, 0],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.send_to }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "html",
+        "message": "={{ $json.email_body }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "if-blocked",
+      "name": "Is Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1760, 0],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Process AI Response').item.json.status }}",
+              "rightValue": "blocked",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-prep-alert",
+      "name": "Prep Owner Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, -180],
+      "parameters": {
+        "jsCode": "// Prep owner alert email for blocked jobs\n// References canonical Process AI Response node\nconst d = $('Process AI Response').item.json;\nreturn [{ json: {\n  send_to: 'owner@example.com',\n  email_subject: d.owner_alert_subject,\n  email_body: d.owner_alert_body\n}}];"
+      }
+    },
+    {
+      "id": "gmail-owner",
+      "name": "Alert Owner",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2200, -180],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CONFIGURE_ME",
+          "name": "Gmail account"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.send_to }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "html",
+        "message": "={{ $json.email_body }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "code-summary-blocked",
+      "name": "Summary (Blocked)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, -180],
+      "parameters": {
+        "jsCode": "// Webhook response for blocked path\nconst d = $('Process AI Response').item.json;\nreturn [{ json: {\n  success: true,\n  job_site: d.job_site,\n  status: d.status,\n  percent_complete: d.percent_complete,\n  actions: ['AI classified as BLOCKED', 'Logged to Google Sheets', 'Client notified via email', 'Owner alerted via email'],\n  foreman_summary: d.foreman_summary,\n  client_summary: d.client_summary,\n  processed_at: d.processed_at\n}}];"
+      }
+    },
+    {
+      "id": "code-summary-normal",
+      "name": "Summary (Normal)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 180],
+      "parameters": {
+        "jsCode": "// Webhook response for on_track/at_risk path\nconst d = $('Process AI Response').item.json;\nreturn [{ json: {\n  success: true,\n  job_site: d.job_site,\n  status: d.status,\n  percent_complete: d.percent_complete,\n  actions: ['AI classified as ' + (d.status || '').toUpperCase(), 'Logged to Google Sheets', 'Client notified via email'],\n  foreman_summary: d.foreman_summary,\n  client_summary: d.client_summary,\n  processed_at: d.processed_at\n}}];"
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 400],
+      "parameters": {}
+    },
+    {
+      "id": "code-error",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 400],
+      "parameters": {
+        "jsCode": "// Format error details for logging\nconst e = $input.item.json;\nreturn [{ json: {\n  error: true,\n  error_message: e.message || 'Unknown error',\n  timestamp: new Date().toISOString(),\n  workflow: 'Construction Job Progress Tracker'\n}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Foreman Update": {
+      "main": [[{ "node": "Parse & Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Parse & Build Prompt": {
+      "main": [[{ "node": "AI Triage (Claude)", "type": "main", "index": 0 }]]
+    },
+    "AI Triage (Claude)": {
+      "main": [[{ "node": "Process AI Response", "type": "main", "index": 0 }]]
+    },
+    "Process AI Response": {
+      "main": [[{ "node": "Prep Sheets Row", "type": "main", "index": 0 }]]
+    },
+    "Prep Sheets Row": {
+      "main": [[{ "node": "Log Job Update", "type": "main", "index": 0 }]]
+    },
+    "Log Job Update": {
+      "main": [[{ "node": "Prep Client Email", "type": "main", "index": 0 }]]
+    },
+    "Prep Client Email": {
+      "main": [[{ "node": "Notify Client", "type": "main", "index": 0 }]]
+    },
+    "Notify Client": {
+      "main": [[{ "node": "Is Blocked?", "type": "main", "index": 0 }]]
+    },
+    "Is Blocked?": {
+      "main": [
+        [{ "node": "Prep Owner Alert", "type": "main", "index": 0 }],
+        [{ "node": "Summary (Normal)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prep Owner Alert": {
+      "main": [[{ "node": "Alert Owner", "type": "main", "index": 0 }]]
+    },
+    "Alert Owner": {
+      "main": [[{ "node": "Summary (Blocked)", "type": "main", "index": 0 }]]
+    },
+    "Error Trigger": {
+      "main": [[{ "node": "Error Handler", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

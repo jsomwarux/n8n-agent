@@ -1,0 +1,468 @@
+{
+  "name": "PM Maintenance Triage — Template",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Maintenance Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 300],
+      "webhookId": "pm-maintenance-triage",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pm-maintenance-triage",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "normalize-input",
+      "name": "Normalize Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Normalize input from AppFolio webhook, Tally, or Typeform\n// Outputs a consistent shape regardless of source\ntry {\n  const d = $input.item.json;\n\n  // Detect source format and normalize\n  let normalized;\n\n  if (d.fields) {\n    // Tally format: { fields: [{ label, value }] }\n    const fieldMap = {};\n    for (const f of d.fields) {\n      fieldMap[f.label.toLowerCase().replace(/\\s+/g, '_')] = f.value;\n    }\n    normalized = {\n      unit: fieldMap.unit || fieldMap.unit_number || '',\n      tenant_name: fieldMap.tenant_name || fieldMap.name || '',\n      tenant_email: fieldMap.tenant_email || fieldMap.email || '',\n      tenant_phone: fieldMap.tenant_phone || fieldMap.phone || '',\n      issue_description: fieldMap.issue_description || fieldMap.description || fieldMap.issue || '',\n      stated_urgency: fieldMap.urgency || 'unknown',\n      source: 'tally'\n    };\n  } else if (d.form_response) {\n    // Typeform format\n    const answers = d.form_response.answers || [];\n    normalized = {\n      unit: answers[0] ? answers[0].text : '',\n      tenant_name: answers[1] ? answers[1].text : '',\n      tenant_email: answers[2] ? answers[2].email : '',\n      tenant_phone: answers[3] ? answers[3].phone_number : '',\n      issue_description: answers[4] ? answers[4].text : '',\n      stated_urgency: answers[5] ? answers[5].choice.label : 'unknown',\n      source: 'typeform'\n    };\n  } else {\n    // AppFolio webhook or generic JSON\n    normalized = {\n      unit: d.unit || d.unit_number || d.property_unit || '',\n      tenant_name: d.tenant_name || d.name || d.resident_name || '',\n      tenant_email: d.tenant_email || d.email || d.resident_email || '',\n      tenant_phone: d.tenant_phone || d.phone || '',\n      issue_description: d.issue_description || d.description || d.details || d.message || '',\n      stated_urgency: d.urgency || d.priority || 'unknown',\n      source: d.source || 'appfolio'\n    };\n  }\n\n  normalized.received_at = new Date().toISOString();\n  normalized.ticket_id = 'MR-' + Date.now().toString(36).toUpperCase();\n\n  return { json: normalized };\n} catch (err) {\n  return { json: { error: 'Failed to normalize input: ' + err.message } };\n}"
+      }
+    },
+    {
+      "id": "build-ai-prompt",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build the Claude prompt for maintenance triage classification\ntry {\n  const d = $input.item.json;\n\n  const prompt = `You are a property management maintenance triage AI. Classify this maintenance request and draft a vendor dispatch message.\n\nMaintenance Request:\n- Unit: ${d.unit}\n- Tenant: ${d.tenant_name}\n- Description: ${d.issue_description}\n- Tenant-stated urgency: ${d.stated_urgency}\n\nRespond in EXACTLY this JSON format (no markdown, no code fences):\n{\n  \"urgency\": \"emergency|urgent|routine\",\n  \"category\": \"plumbing|electrical|hvac|structural|cosmetic\",\n  \"reasoning\": \"Brief explanation of classification\",\n  \"vendor_dispatch_message\": \"Professional message to send to the assigned vendor including unit number, issue summary, and urgency level\",\n  \"tenant_confirmation_message\": \"Friendly message to send to the tenant confirming receipt and expected timeline\",\n  \"sla_hours\": 2|24|72\n}\n\nClassification rules:\n- EMERGENCY: Active flooding, gas leak, fire damage, no heat in winter, sewage backup, electrical hazard. SLA: 2 hours.\n- URGENT: No hot water, broken lock, major appliance failure, HVAC failure in extreme weather. SLA: 24 hours.\n- ROUTINE: Cosmetic damage, minor leak (contained), appliance wear, paint, fixtures. SLA: 72 hours.\n\nAlways err on the side of higher urgency when in doubt.`;\n\n  const requestBody = {\n    model: 'claude-sonnet-4-20250514',\n    max_tokens: 1024,\n    messages: [\n      { role: 'user', content: prompt }\n    ]\n  };\n\n  return {\n    json: {\n      ...d,\n      ai_request_body: requestBody\n    }\n  };\n} catch (err) {\n  return { json: { ...$input.item.json, error: 'Failed to build AI prompt: ' + err.message } };\n}"
+      }
+    },
+    {
+      "id": "ai-triage",
+      "name": "AI Triage (Claude)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [660, 300],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ai_request_body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Parse Claude's response and merge with original request data\ntry {\n  const upstream = $('Build AI Prompt').item.json;\n  const aiResponse = $input.item.json;\n\n  let responseText = '';\n  if (aiResponse.content && aiResponse.content.length > 0) {\n    responseText = aiResponse.content[0].text;\n  }\n\n  // Strip markdown code fences if present\n  responseText = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(responseText);\n  } catch (parseErr) {\n    parsed = {\n      urgency: 'urgent',\n      category: 'plumbing',\n      reasoning: 'AI response could not be parsed — defaulting to urgent/plumbing for safety',\n      vendor_dispatch_message: 'Maintenance request received for unit ' + upstream.unit + '. Please respond ASAP.',\n      tenant_confirmation_message: 'We have received your maintenance request and a technician will be in touch shortly.',\n      sla_hours: 24\n    };\n  }\n\n  return {\n    json: {\n      ticket_id: upstream.ticket_id,\n      unit: upstream.unit,\n      tenant_name: upstream.tenant_name,\n      tenant_email: upstream.tenant_email,\n      tenant_phone: upstream.tenant_phone,\n      issue_description: upstream.issue_description,\n      stated_urgency: upstream.stated_urgency,\n      received_at: upstream.received_at,\n      source: upstream.source,\n      ai_urgency: parsed.urgency,\n      ai_category: parsed.category,\n      ai_reasoning: parsed.reasoning,\n      vendor_dispatch_message: parsed.vendor_dispatch_message,\n      tenant_confirmation_message: parsed.tenant_confirmation_message,\n      sla_hours: parsed.sla_hours\n    }\n  };\n} catch (err) {\n  const upstream = $('Build AI Prompt').item.json;\n  return {\n    json: {\n      ...upstream,\n      ai_urgency: 'urgent',\n      ai_category: 'plumbing',\n      ai_reasoning: 'Error parsing AI response: ' + err.message,\n      vendor_dispatch_message: 'Maintenance request for unit ' + (upstream.unit || 'unknown') + '. Please respond.',\n      tenant_confirmation_message: 'Your request has been received. We will be in touch shortly.',\n      sla_hours: 24\n    }\n  };\n}"
+      }
+    },
+    {
+      "id": "vendor-lookup",
+      "name": "Vendor Lookup",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1100, 300],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "mode": "id",
+          "value": "={{VENDOR_SHEET_ID}}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Vendors"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Category",
+              "lookupValue": "={{ $('Parse AI Response').item.json.ai_category }}"
+            }
+          ]
+        },
+        "range": "A:F",
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "={{GOOGLE_SHEETS_CREDENTIAL_ID}}",
+          "name": "Google Sheets"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "prep-dispatch",
+      "name": "Prep Dispatch Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Merge AI triage data with vendor lookup result\n// This is the canonical data node — all downstream nodes reference this\ntry {\n  const triage = $('Parse AI Response').item.json;\n  const vendor = $input.item.json;\n\n  // SLA window config (parameterized — swap per prospect)\n  const slaWindows = {\n    emergency: '{{EMERGENCY_SLA_HOURS}} hours',\n    urgent: '{{URGENT_SLA_HOURS}} hours',\n    routine: '{{ROUTINE_SLA_HOURS}} hours'\n  };\n\n  const slaWindow = slaWindows[triage.ai_urgency] || '24 hours';\n\n  // Build vendor email body\n  const vendorEmailSubject = '[' + triage.ai_urgency.toUpperCase() + '] Maintenance Request — Unit ' + triage.unit + ' — ' + triage.ai_category;\n  const vendorEmailBody = 'Hello ' + (vendor['Vendor Name'] || 'Vendor') + ',\\n\\n' +\n    triage.vendor_dispatch_message + '\\n\\n' +\n    'Ticket ID: ' + triage.ticket_id + '\\n' +\n    'Unit: ' + triage.unit + '\\n' +\n    'Category: ' + triage.ai_category + '\\n' +\n    'Urgency: ' + triage.ai_urgency.toUpperCase() + '\\n' +\n    'SLA: Respond within ' + slaWindow + '\\n\\n' +\n    'Please confirm receipt and estimated arrival time.\\n\\n' +\n    'Thank you,\\n{{COMPANY_NAME}} Maintenance Team';\n\n  // Build tenant confirmation email\n  const tenantEmailSubject = 'Maintenance Request Received — ' + triage.ticket_id;\n  const tenantEmailBody = 'Dear ' + triage.tenant_name + ',\\n\\n' +\n    triage.tenant_confirmation_message + '\\n\\n' +\n    'Ticket ID: ' + triage.ticket_id + '\\n' +\n    'Category: ' + triage.ai_category.charAt(0).toUpperCase() + triage.ai_category.slice(1) + '\\n' +\n    'Expected response: Within ' + slaWindow + '\\n\\n' +\n    'If this is an emergency and you have not been contacted within 2 hours, please call our office directly at {{PM_OFFICE_PHONE}}.\\n\\n' +\n    'Best regards,\\n{{COMPANY_NAME}} Management';\n\n  // Sheets log row\n  const sheetsRow = {\n    'Ticket ID': triage.ticket_id,\n    'Date': triage.received_at,\n    'Unit': triage.unit,\n    'Tenant': triage.tenant_name,\n    'Description': triage.issue_description,\n    'Category': triage.ai_category,\n    'Urgency': triage.ai_urgency,\n    'Vendor': vendor['Vendor Name'] || 'Unassigned',\n    'Vendor Email': vendor['Email'] || '{{FALLBACK_VENDOR_EMAIL}}',\n    'SLA Window': slaWindow,\n    'Status': 'Dispatched',\n    'Tenant Notified': 'Yes'\n  };\n\n  return {\n    json: {\n      ...triage,\n      vendor_name: vendor['Vendor Name'] || 'Unassigned',\n      vendor_email: vendor['Email'] || '{{FALLBACK_VENDOR_EMAIL}}',\n      vendor_phone: vendor['Phone'] || '',\n      sla_window: slaWindow,\n      vendor_email_subject: vendorEmailSubject,\n      vendor_email_body: vendorEmailBody,\n      tenant_email_subject: tenantEmailSubject,\n      tenant_email_body: tenantEmailBody,\n      sheets_row: sheetsRow\n    }\n  };\n} catch (err) {\n  return { json: { ...$('Parse AI Response').item.json, error: 'Prep dispatch failed: ' + err.message } };\n}"
+      }
+    },
+    {
+      "id": "emergency-check",
+      "name": "Is Emergency?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1540, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "leftValue": ""
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "emergency-urgency",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.ai_urgency }}",
+              "rightValue": "emergency"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pm-office-alert",
+      "name": "PM Office Emergency Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1760, 100],
+      "parameters": {
+        "url": "={{PM_ALERT_WEBHOOK_URL}}",
+        "method": "POST",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '🚨 EMERGENCY MAINTENANCE REQUEST\\n\\nTicket: ' + $('Prep Dispatch Data').item.json.ticket_id + '\\nUnit: ' + $('Prep Dispatch Data').item.json.unit + '\\nTenant: ' + $('Prep Dispatch Data').item.json.tenant_name + '\\nIssue: ' + $('Prep Dispatch Data').item.json.issue_description + '\\nCategory: ' + $('Prep Dispatch Data').item.json.ai_category + '\\nVendor Dispatched: ' + $('Prep Dispatch Data').item.json.vendor_name + '\\n\\nSLA: 2 hours — immediate response required.' }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "send-vendor-email",
+      "name": "Email Vendor",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1760, 300],
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "fromEmail": "={{PM_FROM_EMAIL}}",
+        "toEmail": "={{ $('Prep Dispatch Data').item.json.vendor_email }}",
+        "subject": "={{ $('Prep Dispatch Data').item.json.vendor_email_subject }}",
+        "message": "={{ $('Prep Dispatch Data').item.json.vendor_email_body }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "={{SMTP_CREDENTIAL_ID}}",
+          "name": "SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "send-tenant-email",
+      "name": "Email Tenant",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1980, 300],
+      "parameters": {
+        "resource": "email",
+        "operation": "send",
+        "fromEmail": "={{PM_FROM_EMAIL}}",
+        "toEmail": "={{ $('Prep Dispatch Data').item.json.tenant_email }}",
+        "subject": "={{ $('Prep Dispatch Data').item.json.tenant_email_subject }}",
+        "message": "={{ $('Prep Dispatch Data').item.json.tenant_email_body }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "={{SMTP_CREDENTIAL_ID}}",
+          "name": "SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "prep-sheets-log",
+      "name": "Prep Sheets Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build flat object matching Sheets header row exactly\n// Lesson 36: always use a Prep node before Sheets to avoid defineBelow issues\ntry {\n  const d = $('Prep Dispatch Data').item.json;\n  return {\n    json: {\n      'Ticket ID': d.ticket_id,\n      'Date': d.received_at,\n      'Unit': d.unit,\n      'Tenant': d.tenant_name,\n      'Description': d.issue_description,\n      'Category': d.ai_category,\n      'Urgency': d.ai_urgency,\n      'Vendor': d.vendor_name,\n      'Vendor Email': d.vendor_email,\n      'SLA Window': d.sla_window,\n      'Status': 'Dispatched',\n      'Tenant Notified': 'Yes'\n    }\n  };\n} catch (err) {\n  return { json: { 'Ticket ID': 'ERROR', 'Date': new Date().toISOString(), 'Description': err.message } };\n}"
+      }
+    },
+    {
+      "id": "log-to-sheets",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [2420, 300],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "id",
+          "value": "={{LOG_SHEET_ID}}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Maintenance Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "={{GOOGLE_SHEETS_CREDENTIAL_ID}}",
+          "name": "Google Sheets"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "build-response",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build the webhook response payload and log success\ntry {\n  const d = $('Prep Dispatch Data').item.json;\n  return {\n    json: {\n      status: 'success',\n      ticket_id: d.ticket_id,\n      classification: {\n        urgency: d.ai_urgency,\n        category: d.ai_category,\n        reasoning: d.ai_reasoning\n      },\n      vendor_assigned: {\n        name: d.vendor_name,\n        email: d.vendor_email\n      },\n      sla_window: d.sla_window,\n      tenant_notified: true,\n      emergency_alert_sent: d.ai_urgency === 'emergency',\n      message: 'Maintenance request ' + d.ticket_id + ' triaged and dispatched successfully.'\n    }\n  };\n} catch (err) {\n  return {\n    json: {\n      status: 'error',\n      message: 'Workflow completed with errors: ' + err.message\n    }\n  };\n}"
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 600],
+      "parameters": {}
+    },
+    {
+      "id": "error-handler",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 600],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Error handler — logs error details for debugging\ntry {\n  const error = $input.item.json;\n  return {\n    json: {\n      status: 'workflow_error',\n      error_message: error.message || 'Unknown error',\n      error_node: error.node || 'Unknown node',\n      timestamp: new Date().toISOString(),\n      workflow: 'PM Maintenance Triage'\n    }\n  };\n} catch (err) {\n  return {\n    json: {\n      status: 'error_handler_failed',\n      message: err.message,\n      timestamp: new Date().toISOString()\n    }\n  };\n}"
+      }
+    }
+  ],
+  "connections": {
+    "Maintenance Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Triage (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Triage (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Vendor Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vendor Lookup": {
+      "main": [
+        [
+          {
+            "node": "Prep Dispatch Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Dispatch Data": {
+      "main": [
+        [
+          {
+            "node": "Is Emergency?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Emergency?": {
+      "main": [
+        [
+          {
+            "node": "PM Office Emergency Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PM Office Emergency Alert": {
+      "main": [
+        [
+          {
+            "node": "Email Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Vendor": {
+      "main": [
+        [
+          {
+            "node": "Email Tenant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Tenant": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Sheets Log": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}
