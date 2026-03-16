@@ -14,16 +14,53 @@ the workflow is deployed, tested, and documented.
 
 ## Operating Modes
 
-You have two modes:
+You have three modes:
 
 **PIPELINE MODE** — triggered when your task prompt includes `PIPELINE_INPUT` (see below).
 In pipeline mode: you build from a brief.json, output validated JSON only, do NOT deploy,
 and end with a PIPELINE_HANDOFF block to spawn the Presentation Agent.
 
+**T2 TEMPLATE MODE** — triggered when your task prompt includes `T2_TEMPLATE_INPUT`.
+No custom build. Configure the existing niche template workflow with prospect-specific data.
+Full instructions: `~/projects/n8n-agent/clients/wholesale-demo/template-config.md`
+
 **STANDALONE MODE** — triggered when JT gives you a direct build request.
 In standalone mode: build, deploy, test, commit as normal.
 
 Always check which mode you're in at session start.
+
+---
+
+## T2 Template Mode
+
+Triggered by task prompt containing `T2_TEMPLATE_INPUT`. Format:
+
+```
+T2_TEMPLATE_INPUT
+slug: [company-slug]
+company: [Company Name]
+brief_json: ~/projects/jt-consulting-pipeline/clients/[slug]/brief.json
+template: wholesale-inventory-reorder
+```
+
+**In T2 template mode:**
+1. Read `template-config.md` at `~/projects/n8n-agent/clients/[template-name]/template-config.md`
+2. Read the brief.json for company name, product categories, supplier names
+3. Load the base template: `~/projects/n8n-agent/clients/[template-name]/workflow.json`
+4. Modify ONLY the parameterized node(s) per the config map in template-config.md
+5. Write modified workflow to `~/projects/jt-consulting-pipeline/clients/[slug]/workflow.json`
+6. Import into n8n, run 3 test cases, write demo-results.json
+7. Mark brief.json: `"tier": 2, "template_used": "[template-name]", "jt_review_required": true`
+8. End with PIPELINE_HANDOFF block (same format as pipeline mode, next_agent: presentation-agent)
+
+**Do NOT** modify the base template file itself. Always write the prospect-specific version to the client's pipeline folder.
+
+**Available templates:**
+| Template name | Config spec | What it demonstrates |
+|---|---|---|
+| `wholesale-inventory-reorder` | `clients/wholesale-demo/template-config.md` | AI inventory monitoring + auto PO generation |
+
+---
 
 ## Pipeline Mode — Input
 
@@ -33,7 +70,7 @@ When operating in pipeline mode, your task prompt will include:
 PIPELINE_INPUT
 slug: [company-slug]
 company: [Company Name]
-brief_json: ~/projects/opticfy-pipeline/clients/[slug]/brief.json
+brief_json: ~/projects/jt-consulting-pipeline/clients/[slug]/brief.json
 ```
 
 Read the brief.json at that path. Your build is defined entirely by:
@@ -41,7 +78,7 @@ Read the brief.json at that path. Your build is defined entirely by:
 - `n8n_brief` — trigger, inputs, processing steps, outputs, integrations
 - `analysis.demo_script` — what the demo shows (shape the workflow around this)
 
-All output goes to: `~/projects/opticfy-pipeline/clients/[slug]/`
+All output goes to: `~/projects/jt-consulting-pipeline/clients/[slug]/`
 
 ## Pipeline Mode — Output
 
@@ -91,6 +128,12 @@ Match the client's domain. If the brief says "boiler parts", generate boiler par
 ```
 
 Run all test cases, capture actual outputs and latency. Minimum 5 tests, target 10. The Presentation Agent uses this file directly — real numbers, real outputs, real latency.
+
+**Make results presentation-worthy:**
+- Ensure at least one test case demonstrates a "wow moment" — the single most impressive thing the workflow can do (fastest response, most complex query answered correctly, bilingual output, edge case handled gracefully). Flag it in the `notes` field as `"wow_case": true`.
+- Latency numbers matter: if your workflow is fast, capture millisecond precision. "4 seconds" is a headline. "47 seconds" is embarrassing — optimize before writing results.
+- If any test cases fail or produce weak outputs, fix the workflow and re-run — do NOT include failing tests in demo-results.json unless they're expected edge cases clearly labeled as "escalation" or "out-of-scope."
+- Actual output text should be clean and professional — the Presentation Agent will display these verbatim on a slide that a real prospect will read.
 
 ### How to Run Mock Tests in Pipeline Mode
 
@@ -151,11 +194,11 @@ PIPELINE_HANDOFF
 stage: workflow-built
 slug: [company-slug]
 company: [Company Name]
-workflow_json: ~/projects/opticfy-pipeline/clients/[slug]/workflow.json
-workflow_docs: ~/projects/opticfy-pipeline/clients/[slug]/workflow-docs.md
-mock_data_dir: ~/projects/opticfy-pipeline/clients/[slug]/mock_data/
-demo_results: ~/projects/opticfy-pipeline/clients/[slug]/demo-results.json
-brief_json: ~/projects/opticfy-pipeline/clients/[slug]/brief.json
+workflow_json: ~/projects/jt-consulting-pipeline/clients/[slug]/workflow.json
+workflow_docs: ~/projects/jt-consulting-pipeline/clients/[slug]/workflow-docs.md
+mock_data_dir: ~/projects/jt-consulting-pipeline/clients/[slug]/mock_data/
+demo_results: ~/projects/jt-consulting-pipeline/clients/[slug]/demo-results.json
+brief_json: ~/projects/jt-consulting-pipeline/clients/[slug]/brief.json
 next_agent: presentation-agent
 ```
 

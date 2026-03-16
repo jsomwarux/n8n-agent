@@ -1,0 +1,130 @@
+{
+  "test_cases": [
+    {
+      "name": "CRITICAL — Cancellation Threat, Enterprise VIP, Angry",
+      "description": "Enterprise customer threatening cancellation due to repeated outages. Should route to CRITICAL priority, retention team, 1-hour SLA, trigger escalation path.",
+      "expected_routing": {
+        "priority": "CRITICAL",
+        "assigned_team": "retention_team",
+        "sla_hours": 1,
+        "vip_customer": true,
+        "churn_risk": "high",
+        "path": "escalation"
+      },
+      "payload": {
+        "ticket_id": "TKT-2026-4401",
+        "channel": "email",
+        "customer_name": "Diane Mercer",
+        "customer_email": "jtsomwaru+diane.mercer@gmail.com",
+        "customer_tier": "enterprise",
+        "account_value": "$48,000/yr",
+        "subject": "Completely unacceptable — cancelling our contract",
+        "message": "This is the THIRD time this month our API integration has gone down during peak hours. We lost approximately $12,000 in transactions yesterday because of your outage and your team took 6 hours to respond. I've already spoken to your competitor and we are prepared to move our entire account if this is not resolved TODAY. I need a call with your VP of Engineering within the next 2 hours or I am initiating the cancellation process.",
+        "prior_tickets_30d": 3,
+        "policy_type": "enterprise_saas"
+      }
+    },
+    {
+      "name": "URGENT — Billing Error, Mid-Market Customer, Frustrated",
+      "description": "Professional tier customer with $1,300 overcharge causing overdraft. Should route to URGENT priority, billing team, 2-hour SLA.",
+      "expected_routing": {
+        "priority": "URGENT",
+        "assigned_team": "billing_team",
+        "sla_hours": 2,
+        "vip_customer": false,
+        "churn_risk": "medium",
+        "path": "escalation"
+      },
+      "payload": {
+        "ticket_id": "TKT-2026-4402",
+        "channel": "live_chat",
+        "customer_name": "Carlos Mendez",
+        "customer_email": "jtsomwaru+carlos.mendez@gmail.com",
+        "customer_tier": "professional",
+        "account_value": "$6,200/yr",
+        "subject": "Charged wrong amount — $1,840 instead of $540",
+        "message": "Hi, I just got my invoice for this month and you charged me $1,840 but my plan is only $540/month. This is a $1,300 overcharge and it has caused my business account to overdraft. I need this reversed immediately. I've been a customer for 2 years and this has never happened before. Please help ASAP.",
+        "prior_tickets_30d": 1,
+        "policy_type": "professional_saas"
+      }
+    },
+    {
+      "name": "STANDARD — Feature Request, Starter Tier, Neutral",
+      "description": "Happy starter customer with a feature suggestion. Should route to STANDARD priority, product team, 24-48 hour SLA, standard path with auto-response.",
+      "expected_routing": {
+        "priority": "STANDARD",
+        "assigned_team": "product_team",
+        "sla_hours": 24,
+        "vip_customer": false,
+        "churn_risk": "none",
+        "path": "standard"
+      },
+      "payload": {
+        "ticket_id": "TKT-2026-4403",
+        "channel": "web_form",
+        "customer_name": "Priya Nair",
+        "customer_email": "jtsomwaru+priya.nair@gmail.com",
+        "customer_tier": "starter",
+        "account_value": "$1,200/yr",
+        "subject": "Can you add CSV export to the dashboard?",
+        "message": "Hi team, I love using the product and it's been really helpful for my team. One thing that would make it even better is if we could export our dashboard data as a CSV file. Right now I have to manually copy data which takes a while. Is this something on your roadmap? Thanks for all the great work!",
+        "prior_tickets_30d": 0,
+        "policy_type": "starter_saas"
+      }
+    },
+    {
+      "name": "HIGH — Technical Issue, Professional Tier, Confused",
+      "description": "Professional customer experiencing partial feature degradation. Should route to HIGH priority, tier2 technical, 4-hour SLA.",
+      "expected_routing": {
+        "priority": "HIGH",
+        "assigned_team": "tier2_technical",
+        "sla_hours": 4,
+        "vip_customer": false,
+        "churn_risk": "low",
+        "path": "standard"
+      },
+      "payload": {
+        "ticket_id": "TKT-2026-4404",
+        "channel": "email",
+        "customer_name": "Robert Chen",
+        "customer_email": "jtsomwaru+robert.chen@gmail.com",
+        "customer_tier": "professional",
+        "account_value": "$4,800/yr",
+        "subject": "Dashboard not loading properly since yesterday",
+        "message": "Hi, since yesterday afternoon my dashboard has been showing a spinning loader for about 30 seconds before finally loading. Sometimes it doesn't load at all and I have to refresh multiple times. This is making it hard to get my work done. I'm not sure if it's something on my end or your system. Can you help me figure out what's going on?",
+        "prior_tickets_30d": 0,
+        "policy_type": "professional_saas"
+      }
+    },
+    {
+      "name": "VIP Detection — Platinum Tier Standard Request",
+      "description": "Platinum customer with routine question. Should still route through VIP/escalation path due to customer tier, even though the issue itself is low priority.",
+      "expected_routing": {
+        "priority": "STANDARD",
+        "assigned_team": "account_management",
+        "sla_hours": 4,
+        "vip_customer": true,
+        "churn_risk": "none",
+        "path": "escalation"
+      },
+      "payload": {
+        "ticket_id": "TKT-2026-4405",
+        "channel": "email",
+        "customer_name": "Sarah Whitfield",
+        "customer_email": "jtsomwaru+sarah.whitfield@gmail.com",
+        "customer_tier": "platinum",
+        "account_value": "$85,000/yr",
+        "subject": "Question about adding team members",
+        "message": "Hi there, I want to add 3 new team members to our account. Can you walk me through the process or send me the documentation? Also curious if there are any bulk import options since we might be adding more later this quarter. Thanks!",
+        "prior_tickets_30d": 0,
+        "policy_type": "platinum_saas"
+      }
+    }
+  ],
+  "curl_examples": {
+    "test_critical": "curl -X POST http://localhost:5678/webhook/support-ticket -H 'Content-Type: application/json' -d '{\"ticket_id\":\"TKT-2026-4401\",\"channel\":\"email\",\"customer_name\":\"Diane Mercer\",\"customer_email\":\"jtsomwaru+diane.mercer@gmail.com\",\"customer_tier\":\"enterprise\",\"account_value\":\"$48,000/yr\",\"subject\":\"Completely unacceptable — cancelling our contract\",\"message\":\"This is the THIRD time this month our API integration has gone down during peak hours. We lost approximately $12,000 in transactions yesterday because of your outage and your team took 6 hours to respond. I have already spoken to your competitor and we are prepared to move our entire account if this is not resolved TODAY.\",\"prior_tickets_30d\":3}'",
+    "test_urgent": "curl -X POST http://localhost:5678/webhook/support-ticket -H 'Content-Type: application/json' -d '{\"ticket_id\":\"TKT-2026-4402\",\"channel\":\"live_chat\",\"customer_name\":\"Carlos Mendez\",\"customer_email\":\"jtsomwaru+carlos.mendez@gmail.com\",\"customer_tier\":\"professional\",\"account_value\":\"$6,200/yr\",\"subject\":\"Charged wrong amount — $1,840 instead of $540\",\"message\":\"Hi, I just got my invoice for this month and you charged me $1,840 but my plan is only $540/month. This is a $1,300 overcharge. Please fix ASAP.\",\"prior_tickets_30d\":1}'",
+    "test_standard": "curl -X POST http://localhost:5678/webhook/support-ticket -H 'Content-Type: application/json' -d '{\"ticket_id\":\"TKT-2026-4403\",\"channel\":\"web_form\",\"customer_name\":\"Priya Nair\",\"customer_email\":\"jtsomwaru+priya.nair@gmail.com\",\"customer_tier\":\"starter\",\"account_value\":\"$1,200/yr\",\"subject\":\"Can you add CSV export to the dashboard?\",\"message\":\"Hi team, I love using the product. One thing that would make it even better is if we could export our dashboard data as a CSV file. Thanks!\",\"prior_tickets_30d\":0}'"
+  },
+  "webhook_url": "http://localhost:5678/webhook/support-ticket"
+}

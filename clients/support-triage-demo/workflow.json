@@ -1,0 +1,611 @@
+{
+  "name": "AI Multi-Channel Support Triage — Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "support-ticket",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook: New Ticket",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "support-ticket-intake"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json.body || $input.item.json;\n\nreturn [{\n  json: {\n    ticket_id: raw.ticket_id || ('TKT-' + Date.now()),\n    channel: raw.channel || 'web',\n    customer_name: raw.customer_name || 'Unknown Customer',\n    customer_email: raw.customer_email || '',\n    customer_tier: raw.customer_tier || 'standard',\n    account_value: raw.account_value || '$0',\n    subject: raw.subject || 'No subject',\n    message: raw.message || '',\n    prior_tickets_30d: raw.prior_tickets_30d || 0,\n    received_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "code-normalize",
+      "name": "Normalize Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $('Normalize Ticket').item.json;\nconst prompt = `You are an expert customer support triage specialist. Analyze this support ticket and return structured JSON.\n\nTICKET:\n---\nTicket ID: ${t.ticket_id}\nChannel: ${t.channel}\nCustomer: ${t.customer_name} (${t.customer_tier})\nSubject: ${t.subject}\nMessage: ${t.message}\nAccount Value: ${t.account_value}\nPrior Tickets (30d): ${t.prior_tickets_30d}\n---\n\nReturn ONLY valid JSON:\n{\n  \"priority\": \"CRITICAL\" | \"URGENT\" | \"HIGH\" | \"STANDARD\" | \"LOW\",\n  \"category\": \"billing\" | \"technical\" | \"account_management\" | \"product_bug\" | \"feature_request\" | \"onboarding\" | \"cancellation_risk\" | \"general\",\n  \"sentiment\": \"angry\" | \"frustrated\" | \"neutral\" | \"satisfied\" | \"confused\",\n  \"vip_customer\": true | false,\n  \"churn_risk\": \"high\" | \"medium\" | \"low\" | \"none\",\n  \"assigned_team\": \"billing_team\" | \"tier1_support\" | \"tier2_technical\" | \"account_management\" | \"retention_team\" | \"product_team\",\n  \"sla_hours\": 1 | 2 | 4 | 8 | 24 | 48,\n  \"auto_response\": \"2-3 sentence professional first response to send immediately. Acknowledge their issue specifically, set expectation for resolution. Do not make promises about outcomes. Use their name.\",\n  \"agent_summary\": \"2-3 sentence internal brief for the assigned agent: key issue, risk flags, recommended first action.\",\n  \"tags\": [\"array\", \"of\", \"relevant\", \"tags\"],\n  \"reasoning\": \"1-2 sentence explanation of priority and routing decision\"\n}\n\nPriority rules:\n- CRITICAL: Cancellation threat, complete service outage, data loss, payment failure on large account\n- URGENT: Significant business impact, VIP customer any issue, billing error >$500, security concern\n- HIGH: Partial service degradation, billing questions, account changes\n- STANDARD: General questions, feature requests, minor bugs\n- LOW: Compliments, general feedback, non-urgent feature requests\n\nVIP = account_value > $10,000/yr OR customer_tier === \"enterprise\" OR customer_tier === \"platinum\"\nChurn risk = high if cancellation language, repeated issues, or angry + CRITICAL/URGENT`;\n\nreturn [{ json: { ...t, prompt } }];"
+      },
+      "id": "code-prompt",
+      "name": "Build Triage Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://jtsomwaru.com"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"anthropic/claude-3.5-sonnet\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": $('Build Triage Prompt').item.json.prompt }] }) }}",
+        "options": {}
+      },
+      "id": "http-claude",
+      "name": "Claude: Classify & Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $('Claude: Classify & Draft').item.json;\nconst content = (response.choices && response.choices[0] && response.choices[0].message && response.choices[0].message.content) ? response.choices[0].message.content : '';\nconst ticket = $('Normalize Ticket').item.json;\n\nlet parsed;\ntry {\n  const match = content.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(match ? match[0] : content);\n} catch(e) {\n  parsed = {\n    priority: 'STANDARD',\n    category: 'general',\n    sentiment: 'neutral',\n    vip_customer: false,\n    churn_risk: 'none',\n    assigned_team: 'tier1_support',\n    sla_hours: 8,\n    auto_response: 'Hi ' + ticket.customer_name + ', thank you for reaching out. We\\'ve received your ticket and a specialist will be in touch within 8 hours.',\n    agent_summary: 'AI parse failed — manual review required.',\n    tags: [],\n    reasoning: 'Fallback to standard routing due to AI parse error.'\n  };\n}\n\nreturn [{\n  json: {\n    ticket_id: ticket.ticket_id,\n    channel: ticket.channel,\n    customer_name: ticket.customer_name,\n    customer_email: ticket.customer_email,\n    customer_tier: ticket.customer_tier,\n    account_value: ticket.account_value,\n    subject: ticket.subject,\n    message: ticket.message,\n    prior_tickets_30d: ticket.prior_tickets_30d,\n    received_at: ticket.received_at,\n    priority: parsed.priority,\n    category: parsed.category,\n    sentiment: parsed.sentiment,\n    vip_customer: parsed.vip_customer,\n    churn_risk: parsed.churn_risk,\n    assigned_team: parsed.assigned_team,\n    sla_hours: parsed.sla_hours,\n    auto_response: parsed.auto_response,\n    agent_summary: parsed.agent_summary,\n    tags: parsed.tags,\n    reasoning: parsed.reasoning,\n    processing_timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "code-parse",
+      "name": "Parse Triage Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combinator": "or"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "CRITICAL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-2",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "URGENT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-3",
+              "leftValue": "={{ $json.vip_customer }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-urgent",
+      "name": "Urgent or VIP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Parse Triage Result').item.json;\nreturn [{ json: { ...d } }];"
+      },
+      "id": "code-prep-escalation",
+      "name": "Prep Escalation Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"text\": \"🚨 *\" + $('Prep Escalation Data').item.json.priority + \" TICKET* — #\" + $('Prep Escalation Data').item.json.ticket_id + \"\\n*Customer:* \" + $('Prep Escalation Data').item.json.customer_name + \" (\" + $('Prep Escalation Data').item.json.customer_tier + \") | *Channel:* \" + $('Prep Escalation Data').item.json.channel + \"\\n*Subject:* \" + $('Prep Escalation Data').item.json.subject + \"\\n*Category:* \" + $('Prep Escalation Data').item.json.category + \" | *Sentiment:* \" + $('Prep Escalation Data').item.json.sentiment + \" | *Churn Risk:* \" + $('Prep Escalation Data').item.json.churn_risk + \"\\n*Assigned:* \" + $('Prep Escalation Data').item.json.assigned_team + \" | *SLA:* \" + $('Prep Escalation Data').item.json.sla_hours + \"h\\n*Agent Brief:* \" + (($('Prep Escalation Data').item.json.agent_summary) ? ($('Prep Escalation Data').item.json.agent_summary).substring(0, 200) : '') }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-slack-escalation",
+      "name": "Slack: Escalation Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 180],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "jtsomwaru+agent.escalation@gmail.com",
+        "subject": "={{ '🚨 [' + $('Prep Escalation Data').item.json.priority + '] Ticket #' + $('Prep Escalation Data').item.json.ticket_id + ' — ' + $('Prep Escalation Data').item.json.customer_name }}",
+        "emailType": "html",
+        "message": "<h2 style=\"color:#dc2626\">⚠️ {{ $('Prep Escalation Data').item.json.priority }} — Ticket #{{ $('Prep Escalation Data').item.json.ticket_id }}</h2>\n<p><strong>Customer:</strong> {{ $('Prep Escalation Data').item.json.customer_name }} ({{ $('Prep Escalation Data').item.json.customer_tier }})<br>\n<strong>Channel:</strong> {{ $('Prep Escalation Data').item.json.channel }}<br>\n<strong>Subject:</strong> {{ $('Prep Escalation Data').item.json.subject }}<br>\n<strong>Sentiment:</strong> {{ $('Prep Escalation Data').item.json.sentiment }} | <strong>Churn Risk:</strong> {{ $('Prep Escalation Data').item.json.churn_risk }}<br>\n<strong>SLA:</strong> {{ $('Prep Escalation Data').item.json.sla_hours }} hours | <strong>Team:</strong> {{ $('Prep Escalation Data').item.json.assigned_team }}</p>\n<h3>Agent Brief</h3>\n<p>{{ $('Prep Escalation Data').item.json.agent_summary }}</p>\n<h3>Original Message</h3>\n<p>{{ $('Prep Escalation Data').item.json.message }}</p>",
+        "options": {}
+      },
+      "id": "gmail-agent",
+      "name": "Email: Agent Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1980, 180],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Prep Escalation Data').item.json;\nconst tags = (d.tags && Array.isArray(d.tags)) ? d.tags.join(', ') : '';\nreturn [{ json: {\n  'Date': new Date().toISOString().split('T')[0],\n  'Ticket ID': d.ticket_id || '',\n  'Channel': d.channel || '',\n  'Customer': d.customer_name || '',\n  'Tier': d.customer_tier || '',\n  'Subject': d.subject || '',\n  'Priority': d.priority || '',\n  'Category': d.category || '',\n  'Sentiment': d.sentiment || '',\n  'Churn Risk': d.churn_risk || '',\n  'Assigned Team': d.assigned_team || '',\n  'SLA Hours': String(d.sla_hours || ''),\n  'VIP': d.vip_customer ? 'Yes' : 'No',\n  'Tags': tags,\n  'Reasoning': (d.reasoning || '').substring(0, 200),\n  'Processed At': d.processing_timestamp || new Date().toISOString()\n}}];"
+      },
+      "id": "code-prep-sheets-urgent",
+      "name": "Prep Sheets (Urgent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 180]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Support Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-urgent",
+      "name": "Log to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2420, 180],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Prep Escalation Data').item.json;\nreturn [{ json: {\n  status: 'escalated',\n  ticket_id: d.ticket_id,\n  customer: d.customer_name,\n  priority: d.priority,\n  category: d.category,\n  assigned_team: d.assigned_team,\n  sla_hours: d.sla_hours,\n  churn_risk: d.churn_risk,\n  vip: d.vip_customer,\n  actions_taken: ['Slack escalation alert sent', 'Agent notification email sent', 'Logged to Support Log sheet'],\n  processed_at: d.processing_timestamp\n}}];"
+      },
+      "id": "code-summary-urgent",
+      "name": "Ticket Summary (Urgent)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Parse Triage Result').item.json;\nreturn [{ json: { ...d } }];"
+      },
+      "id": "code-prep-standard",
+      "name": "Prep Standard Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"text\": \"📋 *New Ticket* — #\" + $('Prep Standard Data').item.json.ticket_id + \" (\" + $('Prep Standard Data').item.json.priority + \")\\n*Customer:* \" + $('Prep Standard Data').item.json.customer_name + \" | *Channel:* \" + $('Prep Standard Data').item.json.channel + \"\\n*Subject:* \" + $('Prep Standard Data').item.json.subject + \"\\n*Category:* \" + $('Prep Standard Data').item.json.category + \" | *SLA:* \" + $('Prep Standard Data').item.json.sla_hours + \"h | *Queue:* \" + $('Prep Standard Data').item.json.assigned_team }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-slack-standard",
+      "name": "Slack: Standard Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 420],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Prep Standard Data').item.json.customer_email }}",
+        "subject": "={{ 'Re: ' + $('Prep Standard Data').item.json.subject + ' [Ticket #' + $('Prep Standard Data').item.json.ticket_id + ']' }}",
+        "emailType": "text",
+        "message": "={{ $('Prep Standard Data').item.json.auto_response + '\\n\\nTicket #: ' + $('Prep Standard Data').item.json.ticket_id + '\\nExpected response within: ' + $('Prep Standard Data').item.json.sla_hours + ' hours\\n\\nBest regards,\\nSupport Team' }}",
+        "options": {}
+      },
+      "id": "gmail-auto",
+      "name": "Email: Auto-Response",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1980, 420],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Prep Standard Data').item.json;\nconst tags = (d.tags && Array.isArray(d.tags)) ? d.tags.join(', ') : '';\nreturn [{ json: {\n  'Date': new Date().toISOString().split('T')[0],\n  'Ticket ID': d.ticket_id || '',\n  'Channel': d.channel || '',\n  'Customer': d.customer_name || '',\n  'Tier': d.customer_tier || '',\n  'Subject': d.subject || '',\n  'Priority': d.priority || '',\n  'Category': d.category || '',\n  'Sentiment': d.sentiment || '',\n  'Churn Risk': d.churn_risk || '',\n  'Assigned Team': d.assigned_team || '',\n  'SLA Hours': String(d.sla_hours || ''),\n  'VIP': d.vip_customer ? 'Yes' : 'No',\n  'Tags': tags,\n  'Reasoning': (d.reasoning || '').substring(0, 200),\n  'Processed At': d.processing_timestamp || new Date().toISOString()\n}}];"
+      },
+      "id": "code-prep-sheets-standard",
+      "name": "Prep Sheets (Standard)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 420]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Support Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-standard",
+      "name": "Log to Sheets (Standard)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2420, 420],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Prep Standard Data').item.json;\nreturn [{ json: {\n  status: 'queued',\n  ticket_id: d.ticket_id,\n  customer: d.customer_name,\n  priority: d.priority,\n  category: d.category,\n  assigned_team: d.assigned_team,\n  sla_hours: d.sla_hours,\n  churn_risk: d.churn_risk,\n  vip: d.vip_customer,\n  actions_taken: ['Auto-response email sent to customer', 'Slack digest posted', 'Logged to Support Log sheet'],\n  processed_at: d.processing_timestamp\n}}];"
+      },
+      "id": "code-summary-standard",
+      "name": "Ticket Summary (Standard)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 420]
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [220, 580]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.item.json;\nreturn [{ json: { error_message: error.message || 'Unknown error', timestamp: new Date().toISOString(), workflow: 'AI Support Triage' } }];"
+      },
+      "id": "code-error",
+      "name": "Log Error Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 580]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"text\": \"❌ *Support Triage Error*\\n\" + $('Log Error Details').item.json.error_message }) }}",
+        "options": {}
+      },
+      "id": "http-error-slack",
+      "name": "Error Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 580]
+    }
+  ],
+  "connections": {
+    "Webhook: New Ticket": {
+      "main": [
+        [
+          {
+            "node": "Normalize Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Ticket": {
+      "main": [
+        [
+          {
+            "node": "Build Triage Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Triage Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude: Classify & Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Classify & Draft": {
+      "main": [
+        [
+          {
+            "node": "Parse Triage Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Triage Result": {
+      "main": [
+        [
+          {
+            "node": "Urgent or VIP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent or VIP?": {
+      "main": [
+        [
+          {
+            "node": "Prep Escalation Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Standard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Escalation Data": {
+      "main": [
+        [
+          {
+            "node": "Slack: Escalation Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Escalation Alert": {
+      "main": [
+        [
+          {
+            "node": "Email: Agent Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Agent Notification": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets (Urgent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Sheets (Urgent)": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Ticket Summary (Urgent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Standard Data": {
+      "main": [
+        [
+          {
+            "node": "Slack: Standard Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Standard Digest": {
+      "main": [
+        [
+          {
+            "node": "Email: Auto-Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Auto-Response": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Sheets (Standard)": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets (Standard)": {
+      "main": [
+        [
+          {
+            "node": "Ticket Summary (Standard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Details": {
+      "main": [
+        [
+          {
+            "node": "Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null
+}
