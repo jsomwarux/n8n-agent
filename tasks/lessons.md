@@ -113,3 +113,11 @@
 51. - [glow-index/skincare-analysis]: **`n8n-nodes-base.webhook` typeVersion 2+ nodes have an `executeData` field added to them at runtime** — this is not a valid schema field and causes `PUT /workflows/{id}` to return `400: request/body/nodes/{n} must NOT have additional properties`. Always strip `executeData` (and `webhookId` from old workflows) from all nodes before PUTting. Pattern: `for node in nodes: node.pop('executeData', None); node.pop('webhookId', None)`.
 
 52. - [glow-index/skincare-analysis]: **For existing workflows being updated via API: fetch fresh, strip invalid fields, apply changes, PUT — in that exact order every time.** Never use a locally cached copy of the workflow JSON from a previous API call or source file. The workflow state in n8n includes runtime fields (`executeData`, `versionId`, `activeVersionId`, `versionCounter`) that change on every PUT and cause stale-copy PUTs to fail silently or partially. Always GET → modify in-memory → PUT.
+
+## Prisma 7 + PostgreSQL (Supabase)
+
+[glow-index/supabase-migration]: Prisma 7 does NOT support `url = env("DATABASE_URL")` in schema.prisma. The datasource block must be URL-free (`provider = "postgresql"` only). URL goes in `prisma.config.ts` under `datasource.url`. Putting it in the schema causes P1012 validation error.
+
+[glow-index/supabase-migration]: Prisma 7 requires a driver adapter even for standard PostgreSQL — `new PrismaClient()` alone throws "needs non-empty PrismaClientOptions". Use `@prisma/adapter-pg` with a `pg.Pool`: `const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL }); const adapter = new PrismaPg(pool); new PrismaClient({ adapter })`.
+
+[glow-index/supabase-migration]: When switching from SQLite to PostgreSQL in Prisma 7, remove `@prisma/adapter-better-sqlite3` import and install `@prisma/adapter-pg` + `pg` + `@types/pg`. Update lib/db.ts, seed script, and any other direct PrismaClient instantiation.
