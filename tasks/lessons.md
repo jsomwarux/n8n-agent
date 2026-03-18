@@ -114,6 +114,18 @@
 
 52. - [glow-index/skincare-analysis]: **For existing workflows being updated via API: fetch fresh, strip invalid fields, apply changes, PUT — in that exact order every time.** Never use a locally cached copy of the workflow JSON from a previous API call or source file. The workflow state in n8n includes runtime fields (`executeData`, `versionId`, `activeVersionId`, `versionCounter`) that change on every PUT and cause stale-copy PUTs to fail silently or partially. Always GET → modify in-memory → PUT.
 
+## n8n Version & DB Management
+
+53. - [ops/n8n-recovery]: **n8n crashes with "EntityMetadataNotFoundError: No metadata for InstalledPackages" when the SQLite DB has a corrupted community packages table.** Fix: set env var `N8N_COMMUNITY_PACKAGES_ENABLED=false` before starting. Add permanently to `~/.zshrc`. Do NOT rely on `~/.n8n/config` file — the entity registers before config loads, so the file-based disable doesn't work. Only the env var works reliably.
+
+54. - [ops/n8n-recovery]: **Always pin n8n to `@latest` and keep it updated.** Workflows built on a newer version will show "Install this node" errors on older installs — not because they use community nodes, but because `typeVersion` numbers advance with n8n releases. httpRequest v4.4, googleSheets v4.7 require a recent n8n. Running `npm install -g n8n@latest` fixes these without any workflow changes.
+
+55. - [ops/n8n-recovery]: **After any n8n reinstall or DB restore, credentials must be relinked in the UI even if they exist in the DB.** The credential data is there, but node→credential associations need to be re-selected. Open each greyed node → click credential dropdown → select existing credential. Do not re-enter keys.
+
+56. - [ops/n8n-recovery]: **Export all workflow JSONs to `~/projects/n8n-agent/` after every build session.** If only the SQLite DB is the backup, a version mismatch during reinstall can make workflows uneditable until n8n is updated. JSON exports are version-agnostic and importable on any n8n instance. Command: in n8n UI → workflow → ⋮ menu → Download.
+
+57. - [ops/n8n-recovery]: **Slack credential type is `slackApi` (requires bot token `xoxb-...`), NOT `slackIncomingWebhook`.** Webhook URLs work for HTTP Request nodes only. Slack node requires OAuth bot token from api.slack.com/apps → OAuth & Permissions. HubSpot credential type is `hubspotApi` with field name `apiKey` (not `accessToken`) — despite HubSpot calling it a "private app access token."
+
 ## Prisma 7 + PostgreSQL (Supabase)
 
 [glow-index/supabase-migration]: Prisma 7 does NOT support `url = env("DATABASE_URL")` in schema.prisma. The datasource block must be URL-free (`provider = "postgresql"` only). URL goes in `prisma.config.ts` under `datasource.url`. Putting it in the schema causes P1012 validation error.
