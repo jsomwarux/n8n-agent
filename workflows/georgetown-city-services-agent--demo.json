@@ -1,0 +1,919 @@
+{
+  "updatedAt": "2026-03-18T22:56:16.660Z",
+  "createdAt": "2026-03-18T22:49:48.160Z",
+  "id": "1YbGhdUxSKO0nL6z",
+  "name": "Georgetown City Services Agent \u2014 Demo",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "wh1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "georgetown-wh",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "georgetown-city-services",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson"
+      }
+    },
+    {
+      "id": "code1",
+      "name": "Build AI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Build OpenRouter API request body for Claude Haiku classification\ntry {\n  const input = $json.body || $json;\n  const complaint = input.complaint || '';\n  const citizenEmail = input.citizen_email || '';\n  const citizenName = input.citizen_name || '';\n\n  const promptLines = [\n    'You are a city services dispatcher for Georgetown, Guyana. Classify the following citizen complaint.',\n    '',\n    'Complaint: ' + complaint,\n    '',\n    'DEPARTMENT ROUTING RULES (follow exactly):',\n    '- drainage or flooding -> \"D&I Authority - Georgetown Division\"',\n    '- garbage -> \"M&CC Sanitation - City Constabulary\"',\n    '- pothole -> \"Ministry of Public Works - Georgetown District\"',\n    '- structural -> \"Mayor & City Council - Infrastructure Division\"',\n    '',\n    'Return ONLY valid JSON with these exact fields:',\n    '{',\n    '  \"issue_type\": \"drainage|garbage|pothole|flooding|structural\",',\n    '  \"urgency\": \"low|medium|high|critical\",',\n    '  \"location_extracted\": \"extracted street or area name, or Location not specified\",',\n    '  \"department\": \"use the department from the routing rules above\",',\n    '  \"dispatch_summary\": \"2-sentence plain English dispatch summary for the department\",',\n    '  \"citizen_message\": \"1-sentence plain English confirmation for the citizen\"',\n    '}'\n  ];\n  const prompt = promptLines.join('\\n');\n\n  const requestBody = JSON.stringify({\n    model: 'anthropic/claude-3.5-haiku',\n    messages: [{ role: 'user', content: prompt }],\n    max_tokens: 500,\n    temperature: 0.1\n  });\n\n  return [{ json: { requestBody: requestBody, complaint: complaint, citizen_email: citizenEmail, citizen_name: citizenName } }];\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}\n"
+      }
+    },
+    {
+      "id": "http1",
+      "name": "AI Classification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        680,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENROUTER_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "code2",
+      "name": "Parse and Build Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Parse AI classification response and generate ticket\ntry {\n  const aiResponse = $json;\n  let content = '';\n\n  if (aiResponse.choices && aiResponse.choices.length > 0) {\n    content = aiResponse.choices[0].message.content;\n  }\n\n  let classification;\n  try {\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    classification = JSON.parse(jsonMatch ? jsonMatch[0] : content);\n  } catch (e) {\n    classification = {\n      issue_type: 'structural',\n      urgency: 'medium',\n      location_extracted: 'Location not specified',\n      department: 'Mayor & City Council - Infrastructure Division',\n      dispatch_summary: 'Complaint received. Routing to infrastructure team for assessment.',\n      citizen_message: 'Your complaint has been received and will be reviewed by our team.'\n    };\n  }\n\n  const now = new Date();\n  const year = now.getFullYear();\n  const month = String(now.getMonth() + 1).padStart(2, '0');\n  const day = String(now.getDate()).padStart(2, '0');\n  const rand = String(Math.floor(1000 + Math.random() * 9000));\n  const ticketId = 'GEO-' + year + '-' + month + day + '-' + rand;\n\n  const responseWindows = {\n    drainage: '24 hours',\n    flooding: '24 hours',\n    garbage: '48 hours',\n    pothole: '72 hours',\n    structural: '72 hours'\n  };\n  const responseWindow = responseWindows[classification.issue_type] || '72 hours';\n\n  const complaint = $('Build AI Request').item.json.complaint;\n  const citizenEmail = $('Build AI Request').item.json.citizen_email;\n  const citizenName = $('Build AI Request').item.json.citizen_name;\n\n  return [{\n    json: {\n      ticket_id: ticketId,\n      date: year + '-' + month + '-' + day,\n      complaint: complaint,\n      citizen_email: citizenEmail,\n      citizen_name: citizenName,\n      issue_type: classification.issue_type,\n      urgency: classification.urgency,\n      location: classification.location_extracted,\n      department: classification.department,\n      dispatch_summary: classification.dispatch_summary,\n      citizen_message: classification.citizen_message,\n      response_window: responseWindow,\n      status: 'Open'\n    }\n  }];\n} catch (error) {\n  return [{ json: { error: error.message, ticket_id: 'GEO-ERROR-0000', status: 'Error' } }];\n}\n"
+      }
+    },
+    {
+      "id": "if1",
+      "name": "Route Drainage Flooding",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1160,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "conditions": [
+            {
+              "id": "drainage",
+              "leftValue": "={{ $json.issue_type }}",
+              "rightValue": "drainage",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "flooding",
+              "leftValue": "={{ $json.issue_type }}",
+              "rightValue": "flooding",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if2",
+      "name": "Route Garbage",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1380,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "garbage",
+              "leftValue": "={{ $json.issue_type }}",
+              "rightValue": "garbage",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "version": 2,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code3",
+      "name": "Prep Sheets Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Build flat object matching Google Sheets column headers exactly\ntry {\n  const d = $('Parse and Build Ticket').item.json;\n\n  return [{\n    json: {\n      'Ticket ID': d.ticket_id,\n      'Date': d.date,\n      'Complaint': d.complaint,\n      'Issue Type': d.issue_type,\n      'Urgency': d.urgency,\n      'Location': d.location,\n      'Department': d.department,\n      'Dispatch Summary': d.dispatch_summary,\n      'Citizen Email': d.citizen_email,\n      'Status': d.status\n    }\n  }];\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}\n"
+      }
+    },
+    {
+      "id": "sheets1",
+      "name": "Log to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1840,
+        300
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Georgetown City Services Log",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "code4",
+      "name": "Build Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Build all message strings in Code node - no concatenation in n8n expressions (lesson #41)\ntry {\n  const d = $('Parse and Build Ticket').item.json;\n\n  const issueLabel = d.issue_type.charAt(0).toUpperCase() + d.issue_type.slice(1);\n\n  const gmailSubject = 'Georgetown City Services - Ticket ' + d.ticket_id;\n\n  const gmailLines = [\n    'Dear ' + d.citizen_name + ',',\n    '',\n    'Thank you for reporting your concern to Georgetown City Services.',\n    '',\n    'Ticket Number: ' + d.ticket_id,\n    'Issue Type: ' + issueLabel,\n    'Location: ' + d.location,\n    'Assigned To: ' + d.department,\n    '',\n    d.citizen_message,\n    '',\n    'Expected response window: ' + d.response_window,\n    '',\n    'You can reference your ticket number ' + d.ticket_id + ' for any follow-up inquiries.',\n    '',\n    'Georgetown City Services',\n    'Mayor & City Council'\n  ];\n  const gmailBody = gmailLines.join('\\n');\n\n  const slackLines = [\n    '*Georgetown City Services - New Dispatch*',\n    '',\n    '*Ticket:* ' + d.ticket_id,\n    '*Issue:* ' + d.issue_type.toUpperCase() + ' - ' + d.urgency.toUpperCase() + ' urgency',\n    '*Location:* ' + d.location,\n    '*Department:* ' + d.department,\n    '',\n    '*Dispatch Summary:*',\n    d.dispatch_summary,\n    '',\n    '*Citizen:* ' + d.citizen_name + ' (' + d.citizen_email + ')'\n  ];\n  const slackText = slackLines.join('\\n');\n\n  return [{\n    json: {\n      gmail_subject: gmailSubject,\n      gmail_body: gmailBody,\n      slack_text: slackText,\n      citizen_email: d.citizen_email,\n      ticket_id: d.ticket_id,\n      issue_type: d.issue_type,\n      urgency: d.urgency,\n      department: d.department\n    }\n  }];\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}\n"
+      }
+    },
+    {
+      "id": "gmail1",
+      "name": "Send Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2320,
+        300
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Build Messages').item.json.citizen_email }}",
+        "subject": "={{ $('Build Messages').item.json.gmail_subject }}",
+        "emailType": "text",
+        "message": "={{ $('Build Messages').item.json.gmail_body }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "http2",
+      "name": "Slack Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2560,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: 'general', text: $('Build Messages').item.json.slack_text }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "ZNMVcUnDYw1cXD0v",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "id": "code5",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Build webhook response with ticket summary\ntry {\n  const d = $('Parse and Build Ticket').item.json;\n\n  return [{\n    json: {\n      success: true,\n      ticket_id: d.ticket_id,\n      issue_type: d.issue_type,\n      urgency: d.urgency,\n      location: d.location,\n      department: d.department,\n      response_window: d.response_window,\n      message: d.citizen_message\n    }\n  }];\n} catch (error) {\n  return [{ json: { success: false, error: error.message } }];\n}\n"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Request": {
+      "main": [
+        [
+          {
+            "node": "AI Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Classification": {
+      "main": [
+        [
+          {
+            "node": "Parse and Build Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Build Ticket": {
+      "main": [
+        [
+          {
+            "node": "Route Drainage Flooding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Drainage Flooding": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route Garbage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Garbage": {
+      "main": [
+        [
+          {
+            "node": "Prep Sheets Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Sheets Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Sheets Data": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Build Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Messages": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Slack Dispatch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Dispatch": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "86d7e0c5-3d55-4e7f-8ac0-202c3dc2bb33",
+  "activeVersionId": "86d7e0c5-3d55-4e7f-8ac0-202c3dc2bb33",
+  "versionCounter": 11,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-18T22:49:48.162Z",
+      "createdAt": "2026-03-18T22:49:48.162Z",
+      "role": "workflow:owner",
+      "workflowId": "1YbGhdUxSKO0nL6z",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-18T22:56:16.660Z",
+    "createdAt": "2026-03-18T22:56:16.660Z",
+    "versionId": "86d7e0c5-3d55-4e7f-8ac0-202c3dc2bb33",
+    "workflowId": "1YbGhdUxSKO0nL6z",
+    "nodes": [
+      {
+        "id": "wh1",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          200,
+          300
+        ],
+        "webhookId": "georgetown-wh",
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "georgetown-city-services",
+          "responseMode": "lastNode",
+          "responseData": "firstEntryJson"
+        }
+      },
+      {
+        "id": "code1",
+        "name": "Build AI Request",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Build OpenRouter API request body for Claude Haiku classification\ntry {\n  const input = $json.body || $json;\n  const complaint = input.complaint || '';\n  const citizenEmail = input.citizen_email || '';\n  const citizenName = input.citizen_name || '';\n\n  const promptLines = [\n    'You are a city services dispatcher for Georgetown, Guyana. Classify the following citizen complaint.',\n    '',\n    'Complaint: ' + complaint,\n    '',\n    'DEPARTMENT ROUTING RULES (follow exactly):',\n    '- drainage or flooding -> \"D&I Authority - Georgetown Division\"',\n    '- garbage -> \"M&CC Sanitation - City Constabulary\"',\n    '- pothole -> \"Ministry of Public Works - Georgetown District\"',\n    '- structural -> \"Mayor & City Council - Infrastructure Division\"',\n    '',\n    'Return ONLY valid JSON with these exact fields:',\n    '{',\n    '  \"issue_type\": \"drainage|garbage|pothole|flooding|structural\",',\n    '  \"urgency\": \"low|medium|high|critical\",',\n    '  \"location_extracted\": \"extracted street or area name, or Location not specified\",',\n    '  \"department\": \"use the department from the routing rules above\",',\n    '  \"dispatch_summary\": \"2-sentence plain English dispatch summary for the department\",',\n    '  \"citizen_message\": \"1-sentence plain English confirmation for the citizen\"',\n    '}'\n  ];\n  const prompt = promptLines.join('\\n');\n\n  const requestBody = JSON.stringify({\n    model: 'anthropic/claude-3.5-haiku',\n    messages: [{ role: 'user', content: prompt }],\n    max_tokens: 500,\n    temperature: 0.1\n  });\n\n  return [{ json: { requestBody: requestBody, complaint: complaint, citizen_email: citizenEmail, citizen_name: citizenName } }];\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}\n"
+        }
+      },
+      {
+        "id": "http1",
+        "name": "AI Classification",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          680,
+          300
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000,
+        "parameters": {
+          "method": "POST",
+          "url": "https://openrouter.ai/api/v1/chat/completions",
+          "authentication": "none",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "Bearer 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"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.requestBody }}",
+          "options": {
+            "timeout": 30000
+          }
+        }
+      },
+      {
+        "id": "code2",
+        "name": "Parse and Build Ticket",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          920,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Parse AI classification response and generate ticket\ntry {\n  const aiResponse = $json;\n  let content = '';\n\n  if (aiResponse.choices && aiResponse.choices.length > 0) {\n    content = aiResponse.choices[0].message.content;\n  }\n\n  let classification;\n  try {\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    classification = JSON.parse(jsonMatch ? jsonMatch[0] : content);\n  } catch (e) {\n    classification = {\n      issue_type: 'structural',\n      urgency: 'medium',\n      location_extracted: 'Location not specified',\n      department: 'Mayor & City Council - Infrastructure Division',\n      dispatch_summary: 'Complaint received. Routing to infrastructure team for assessment.',\n      citizen_message: 'Your complaint has been received and will be reviewed by our team.'\n    };\n  }\n\n  const now = new Date();\n  const year = now.getFullYear();\n  const month = String(now.getMonth() + 1).padStart(2, '0');\n  const day = String(now.getDate()).padStart(2, '0');\n  const rand = String(Math.floor(1000 + Math.random() * 9000));\n  const ticketId = 'GEO-' + year + '-' + month + day + '-' + rand;\n\n  const responseWindows = {\n    drainage: '24 hours',\n    flooding: '24 hours',\n    garbage: '48 hours',\n    pothole: '72 hours',\n    structural: '72 hours'\n  };\n  const responseWindow = responseWindows[classification.issue_type] || '72 hours';\n\n  const complaint = $('Build AI Request').item.json.complaint;\n  const citizenEmail = $('Build AI Request').item.json.citizen_email;\n  const citizenName = $('Build AI Request').item.json.citizen_name;\n\n  return [{\n    json: {\n      ticket_id: ticketId,\n      date: year + '-' + month + '-' + day,\n      complaint: complaint,\n      citizen_email: citizenEmail,\n      citizen_name: citizenName,\n      issue_type: classification.issue_type,\n      urgency: classification.urgency,\n      location: classification.location_extracted,\n      department: classification.department,\n      dispatch_summary: classification.dispatch_summary,\n      citizen_message: classification.citizen_message,\n      response_window: responseWindow,\n      status: 'Open'\n    }\n  }];\n} catch (error) {\n  return [{ json: { error: error.message, ticket_id: 'GEO-ERROR-0000', status: 'Error' } }];\n}\n"
+        }
+      },
+      {
+        "id": "if1",
+        "name": "Route Drainage Flooding",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1160,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "combinator": "or",
+            "conditions": [
+              {
+                "id": "drainage",
+                "leftValue": "={{ $json.issue_type }}",
+                "rightValue": "drainage",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              },
+              {
+                "id": "flooding",
+                "leftValue": "={{ $json.issue_type }}",
+                "rightValue": "flooding",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "version": 2,
+              "leftValue": "",
+              "typeValidation": "strict"
+            }
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "if2",
+        "name": "Route Garbage",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1380,
+          520
+        ],
+        "parameters": {
+          "conditions": {
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "garbage",
+                "leftValue": "={{ $json.issue_type }}",
+                "rightValue": "garbage",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "options": {
+              "caseSensitive": true,
+              "version": 2,
+              "leftValue": "",
+              "typeValidation": "strict"
+            }
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "code3",
+        "name": "Prep Sheets Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1600,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Build flat object matching Google Sheets column headers exactly\ntry {\n  const d = $('Parse and Build Ticket').item.json;\n\n  return [{\n    json: {\n      'Ticket ID': d.ticket_id,\n      'Date': d.date,\n      'Complaint': d.complaint,\n      'Issue Type': d.issue_type,\n      'Urgency': d.urgency,\n      'Location': d.location,\n      'Department': d.department,\n      'Dispatch Summary': d.dispatch_summary,\n      'Citizen Email': d.citizen_email,\n      'Status': d.status\n    }\n  }];\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}\n"
+        }
+      },
+      {
+        "id": "sheets1",
+        "name": "Log to Sheets",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          1840,
+          300
+        ],
+        "continueOnFail": true,
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "Georgetown City Services Log",
+            "mode": "name"
+          },
+          "columns": {
+            "mappingMode": "autoMapInputData",
+            "matchingColumns": [],
+            "schema": []
+          }
+        },
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "QeZOA9lJuS7gGgES",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "id": "code4",
+        "name": "Build Messages",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2080,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Build all message strings in Code node - no concatenation in n8n expressions (lesson #41)\ntry {\n  const d = $('Parse and Build Ticket').item.json;\n\n  const issueLabel = d.issue_type.charAt(0).toUpperCase() + d.issue_type.slice(1);\n\n  const gmailSubject = 'Georgetown City Services - Ticket ' + d.ticket_id;\n\n  const gmailLines = [\n    'Dear ' + d.citizen_name + ',',\n    '',\n    'Thank you for reporting your concern to Georgetown City Services.',\n    '',\n    'Ticket Number: ' + d.ticket_id,\n    'Issue Type: ' + issueLabel,\n    'Location: ' + d.location,\n    'Assigned To: ' + d.department,\n    '',\n    d.citizen_message,\n    '',\n    'Expected response window: ' + d.response_window,\n    '',\n    'You can reference your ticket number ' + d.ticket_id + ' for any follow-up inquiries.',\n    '',\n    'Georgetown City Services',\n    'Mayor & City Council'\n  ];\n  const gmailBody = gmailLines.join('\\n');\n\n  const slackLines = [\n    '*Georgetown City Services - New Dispatch*',\n    '',\n    '*Ticket:* ' + d.ticket_id,\n    '*Issue:* ' + d.issue_type.toUpperCase() + ' - ' + d.urgency.toUpperCase() + ' urgency',\n    '*Location:* ' + d.location,\n    '*Department:* ' + d.department,\n    '',\n    '*Dispatch Summary:*',\n    d.dispatch_summary,\n    '',\n    '*Citizen:* ' + d.citizen_name + ' (' + d.citizen_email + ')'\n  ];\n  const slackText = slackLines.join('\\n');\n\n  return [{\n    json: {\n      gmail_subject: gmailSubject,\n      gmail_body: gmailBody,\n      slack_text: slackText,\n      citizen_email: d.citizen_email,\n      ticket_id: d.ticket_id,\n      issue_type: d.issue_type,\n      urgency: d.urgency,\n      department: d.department\n    }\n  }];\n} catch (error) {\n  return [{ json: { error: error.message } }];\n}\n"
+        }
+      },
+      {
+        "id": "gmail1",
+        "name": "Send Confirmation",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.2,
+        "position": [
+          2320,
+          300
+        ],
+        "continueOnFail": true,
+        "parameters": {
+          "resource": "message",
+          "operation": "send",
+          "sendTo": "={{ $('Build Messages').item.json.citizen_email }}",
+          "subject": "={{ $('Build Messages').item.json.gmail_subject }}",
+          "emailType": "text",
+          "message": "={{ $('Build Messages').item.json.gmail_body }}"
+        },
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "r3IbVQkW0d0j3icY",
+            "name": "Gmail account"
+          }
+        }
+      },
+      {
+        "id": "http2",
+        "name": "Slack Dispatch",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          2560,
+          300
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000,
+        "continueOnFail": true,
+        "parameters": {
+          "method": "POST",
+          "url": "https://slack.com/api/chat.postMessage",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "slackApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ channel: 'general', text: $('Build Messages').item.json.slack_text }) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "credentials": {
+          "slackApi": {
+            "id": "ZNMVcUnDYw1cXD0v",
+            "name": "Slack API"
+          }
+        }
+      },
+      {
+        "id": "code5",
+        "name": "Build Response",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2800,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Build webhook response with ticket summary\ntry {\n  const d = $('Parse and Build Ticket').item.json;\n\n  return [{\n    json: {\n      success: true,\n      ticket_id: d.ticket_id,\n      issue_type: d.issue_type,\n      urgency: d.urgency,\n      location: d.location,\n      department: d.department,\n      response_window: d.response_window,\n      message: d.citizen_message\n    }\n  }];\n} catch (error) {\n  return [{ json: { success: false, error: error.message } }];\n}\n"
+        }
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Build AI Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build AI Request": {
+        "main": [
+          [
+            {
+              "node": "AI Classification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Classification": {
+        "main": [
+          [
+            {
+              "node": "Parse and Build Ticket",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse and Build Ticket": {
+        "main": [
+          [
+            {
+              "node": "Route Drainage Flooding",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Drainage Flooding": {
+        "main": [
+          [
+            {
+              "node": "Prep Sheets Data",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Garbage",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Garbage": {
+        "main": [
+          [
+            {
+              "node": "Prep Sheets Data",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Prep Sheets Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prep Sheets Data": {
+        "main": [
+          [
+            {
+              "node": "Log to Sheets",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log to Sheets": {
+        "main": [
+          [
+            {
+              "node": "Build Messages",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Messages": {
+        "main": [
+          [
+            {
+              "node": "Send Confirmation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Confirmation": {
+        "main": [
+          [
+            {
+              "node": "Slack Dispatch",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Slack Dispatch": {
+        "main": [
+          [
+            {
+              "node": "Build Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-18T22:56:16.683Z",
+        "id": 162,
+        "workflowId": "1YbGhdUxSKO0nL6z",
+        "versionId": "86d7e0c5-3d55-4e7f-8ac0-202c3dc2bb33",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      },
+      {
+        "createdAt": "2026-03-18T22:56:16.679Z",
+        "id": 161,
+        "workflowId": "1YbGhdUxSKO0nL6z",
+        "versionId": "86d7e0c5-3d55-4e7f-8ac0-202c3dc2bb33",
+        "event": "deactivated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}

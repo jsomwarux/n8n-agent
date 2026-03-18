@@ -126,6 +126,16 @@
 
 57. - [ops/n8n-recovery]: **Slack credential type is `slackApi` (requires bot token `xoxb-...`), NOT `slackIncomingWebhook`.** Webhook URLs work for HTTP Request nodes only. Slack node requires OAuth bot token from api.slack.com/apps → OAuth & Permissions. HubSpot credential type is `hubspotApi` with field name `apiKey` (not `accessToken`) — despite HubSpot calling it a "private app access token."
 
+58. - [georgetown-city-services]: **OpenRouter model IDs use dots not dashes for version numbers** — `anthropic/claude-3.5-haiku` NOT `anthropic/claude-3-5-haiku-20241022`. Always verify model ID against OpenRouter's /api/v1/models endpoint before building. The `-20241022` date suffix is not used by OpenRouter.
+
+59. - [georgetown-city-services]: **AI classification prompts need explicit department routing rules** — listing department names as pipe-separated options is not enough. The AI will pick any department that sounds reasonable. Add a dedicated "ROUTING RULES" section with explicit mappings: `drainage or flooding -> "D&I Authority"`, `garbage -> "M&CC Sanitation"`, etc. This eliminates department misclassification.
+
+60. - [georgetown-city-services]: **n8n IF node v2.2+ conditions.options requires: version (2), leftValue (""), caseSensitive (true), typeValidation ("strict")** — the MCP validator rejects IF nodes missing any of these fields. The existing working Support Triage workflow only has `caseSensitive` because it was created via the UI (which doesn't validate as strictly). When creating via API/MCP, include all four fields.
+
+61. - [georgetown-city-services]: **Slack API credential with `incoming-webhook` scope cannot post via chat.postMessage** — it needs `chat:write` scope. If the Slack app only has webhook permissions, use the webhook URL with an HTTP Request node instead of the Slack API endpoint. Check scopes at api.slack.com/apps before choosing the integration method.
+
+62. - [georgetown-city-services]: **For Code node jsCode updates via API, write .js files to disk and use Python to construct the JSON payload** — avoids JSON string escaping issues with newlines, quotes, and special characters in JavaScript code. Pattern: write .js files → Python reads files → constructs proper JSON → PUT /workflows/{id}. The MCP partial update tool works for simple code but the file-based approach is more reliable for complex multi-line Code nodes.
+
 ## Prisma 7 + PostgreSQL (Supabase)
 
 [glow-index/supabase-migration]: Prisma 7 does NOT support `url = env("DATABASE_URL")` in schema.prisma. The datasource block must be URL-free (`provider = "postgresql"` only). URL goes in `prisma.config.ts` under `datasource.url`. Putting it in the schema causes P1012 validation error.
