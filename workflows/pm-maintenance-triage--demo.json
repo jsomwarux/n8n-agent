@@ -1,0 +1,303 @@
+{
+  "updatedAt": "2026-03-17T12:54:54.799Z",
+  "createdAt": "2026-03-17T12:54:54.799Z",
+  "id": "KFsT3zSrilh1EXrA",
+  "name": "PM Maintenance Triage \u2014 Demo",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "wh-1",
+      "name": "Maintenance Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "pm-maintenance-triage",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pm-maintenance-triage",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "norm-1",
+      "name": "Normalize Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst body = $input.item.json.body || $input.item.json;\nconst chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';\nlet id = 'MR-';\nfor(let i=0;i<8;i++) id += chars[Math.floor(Math.random()*chars.length)];\nreturn {\n  unit: body.unit || '',\n  tenant_name: body.tenant_name || '',\n  tenant_email: body.tenant_email || '',\n  issue_description: body.issue_description || '',\n  stated_urgency: body.urgency || 'unknown',\n  received_at: new Date().toISOString(),\n  ticket_id: id\n};\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "ai-1",
+      "name": "AI Triage (Demo Rules)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\n// DEMO: Rule-based triage (production: replace with Claude via HTTP Request node)\nconst item = $input.item.json;\nconst desc = (item.issue_description || '').toLowerCase();\nconst stated = (item.stated_urgency || '').toLowerCase();\n\nlet urgency = 'routine';\nlet category = 'other';\nlet vendor_category = 'general';\nlet reasoning = '';\n\n// Emergency keywords\nif (desc.match(/flood|flooding|burst|sewage|gas leak|fire|no heat.*cold|freezing/)) {\n  urgency = 'emergency';\n  reasoning = 'Flooding, burst pipe, or life-safety issue detected.';\n} else if (stated === 'emergency') {\n  urgency = 'emergency';\n  reasoning = 'Tenant reported as emergency.';\n// Urgent keywords\n} else if (desc.match(/no heat|no hot water|heater.*stop|hvac.*fail|not working|no power|electrical.*out/) || stated === 'high') {\n  urgency = 'urgent';\n  reasoning = 'Critical system failure affecting habitability.';\n} else {\n  urgency = 'routine';\n  reasoning = 'Non-critical maintenance request.';\n}\n\n// Category\nif (desc.match(/faucet|pipe|toilet|drain|water|plumb|leak/)) {\n  category = 'plumbing'; vendor_category = urgency === 'emergency' ? 'emergency' : 'plumbing';\n} else if (desc.match(/heat|hvac|ac|air|cool|furnace|boiler/)) {\n  category = 'hvac'; vendor_category = urgency === 'emergency' ? 'emergency' : 'hvac';\n} else if (desc.match(/electric|power|outlet|light|switch|breaker/)) {\n  category = 'electrical'; vendor_category = urgency === 'emergency' ? 'emergency' : 'electrical';\n} else if (desc.match(/door|window|lock|wall|roof|ceiling|floor|struc/)) {\n  category = 'structural'; vendor_category = urgency === 'emergency' ? 'emergency' : 'general';\n} else if (desc.match(/paint|scratch|scuff|cosmetic|dent|minor/)) {\n  category = 'cosmetic'; vendor_category = 'general';\n} else if (desc.match(/refrigerator|fridge|stove|oven|dishwasher|washer|dryer|microwave/)) {\n  category = 'appliance'; vendor_category = 'general';\n} else if (desc.match(/bug|insect|pest|rodent|mice|mouse|rat|roach|bedbug/)) {\n  category = 'pest'; vendor_category = 'general';\n}\n\nreturn { ...item, urgency, category, vendor_category, reasoning };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "vendor-1",
+      "name": "Vendor Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst item = $input.item.json;\nconst cat = item.vendor_category || 'general';\nconst vendors = {\n  plumbing:   { name: 'Demo Plumbing Co',    email: 'jtsomwaru+demo+plumbing@gmail.com',  phone: '555-0101' },\n  hvac:       { name: 'Demo HVAC Services',  email: 'jtsomwaru+demo+hvac@gmail.com',      phone: '555-0102' },\n  electrical: { name: 'Demo Electric Inc',   email: 'jtsomwaru+demo+electric@gmail.com',  phone: '555-0103' },\n  emergency:  { name: 'Demo Emergency 24/7', email: 'jtsomwaru+demo+emergency@gmail.com', phone: '555-0199' },\n  general:    { name: 'Demo General Works',  email: 'jtsomwaru+demo+general@gmail.com',   phone: '555-0100' }\n};\nconst sla = { routine: '72 hours', urgent: '24 hours', emergency: '2 hours' };\nconst vendor = vendors[cat] || vendors.general;\nreturn { ...item, vendor_assigned: vendor, sla_window: sla[item.urgency] || '72 hours' };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "resp-1",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst item = $input.item.json;\nreturn {\n  ticket_id: item.ticket_id,\n  status: 'dispatched',\n  unit: item.unit,\n  tenant_name: item.tenant_name,\n  classification: { urgency: item.urgency, category: item.category, reasoning: item.reasoning },\n  vendor_assigned: item.vendor_assigned,\n  sla_window: item.sla_window,\n  emergency_alert_sent: item.urgency === 'emergency',\n  received_at: item.received_at\n};\n",
+        "mode": "runOnceForEachItem"
+      }
+    }
+  ],
+  "connections": {
+    "Maintenance Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request": {
+      "main": [
+        [
+          {
+            "node": "AI Triage (Demo Rules)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Triage (Demo Rules)": {
+      "main": [
+        [
+          {
+            "node": "Vendor Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vendor Lookup": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "e2b1dd23-f3ef-4ea5-9b4d-f50b83a99774",
+  "activeVersionId": "e2b1dd23-f3ef-4ea5-9b4d-f50b83a99774",
+  "versionCounter": 5,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-17T12:54:54.800Z",
+      "createdAt": "2026-03-17T12:54:54.800Z",
+      "role": "workflow:owner",
+      "workflowId": "KFsT3zSrilh1EXrA",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-17T12:54:54.801Z",
+    "createdAt": "2026-03-17T12:54:54.801Z",
+    "versionId": "e2b1dd23-f3ef-4ea5-9b4d-f50b83a99774",
+    "workflowId": "KFsT3zSrilh1EXrA",
+    "nodes": [
+      {
+        "id": "wh-1",
+        "name": "Maintenance Request Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          0,
+          300
+        ],
+        "webhookId": "pm-maintenance-triage",
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "pm-maintenance-triage",
+          "responseMode": "lastNode",
+          "options": {}
+        }
+      },
+      {
+        "id": "norm-1",
+        "name": "Normalize Request",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          300
+        ],
+        "parameters": {
+          "jsCode": "\nconst body = $input.item.json.body || $input.item.json;\nconst chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';\nlet id = 'MR-';\nfor(let i=0;i<8;i++) id += chars[Math.floor(Math.random()*chars.length)];\nreturn {\n  unit: body.unit || '',\n  tenant_name: body.tenant_name || '',\n  tenant_email: body.tenant_email || '',\n  issue_description: body.issue_description || '',\n  stated_urgency: body.urgency || 'unknown',\n  received_at: new Date().toISOString(),\n  ticket_id: id\n};\n",
+          "mode": "runOnceForEachItem"
+        }
+      },
+      {
+        "id": "ai-1",
+        "name": "AI Triage (Demo Rules)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          300
+        ],
+        "parameters": {
+          "jsCode": "\n// DEMO: Rule-based triage (production: replace with Claude via HTTP Request node)\nconst item = $input.item.json;\nconst desc = (item.issue_description || '').toLowerCase();\nconst stated = (item.stated_urgency || '').toLowerCase();\n\nlet urgency = 'routine';\nlet category = 'other';\nlet vendor_category = 'general';\nlet reasoning = '';\n\n// Emergency keywords\nif (desc.match(/flood|flooding|burst|sewage|gas leak|fire|no heat.*cold|freezing/)) {\n  urgency = 'emergency';\n  reasoning = 'Flooding, burst pipe, or life-safety issue detected.';\n} else if (stated === 'emergency') {\n  urgency = 'emergency';\n  reasoning = 'Tenant reported as emergency.';\n// Urgent keywords\n} else if (desc.match(/no heat|no hot water|heater.*stop|hvac.*fail|not working|no power|electrical.*out/) || stated === 'high') {\n  urgency = 'urgent';\n  reasoning = 'Critical system failure affecting habitability.';\n} else {\n  urgency = 'routine';\n  reasoning = 'Non-critical maintenance request.';\n}\n\n// Category\nif (desc.match(/faucet|pipe|toilet|drain|water|plumb|leak/)) {\n  category = 'plumbing'; vendor_category = urgency === 'emergency' ? 'emergency' : 'plumbing';\n} else if (desc.match(/heat|hvac|ac|air|cool|furnace|boiler/)) {\n  category = 'hvac'; vendor_category = urgency === 'emergency' ? 'emergency' : 'hvac';\n} else if (desc.match(/electric|power|outlet|light|switch|breaker/)) {\n  category = 'electrical'; vendor_category = urgency === 'emergency' ? 'emergency' : 'electrical';\n} else if (desc.match(/door|window|lock|wall|roof|ceiling|floor|struc/)) {\n  category = 'structural'; vendor_category = urgency === 'emergency' ? 'emergency' : 'general';\n} else if (desc.match(/paint|scratch|scuff|cosmetic|dent|minor/)) {\n  category = 'cosmetic'; vendor_category = 'general';\n} else if (desc.match(/refrigerator|fridge|stove|oven|dishwasher|washer|dryer|microwave/)) {\n  category = 'appliance'; vendor_category = 'general';\n} else if (desc.match(/bug|insect|pest|rodent|mice|mouse|rat|roach|bedbug/)) {\n  category = 'pest'; vendor_category = 'general';\n}\n\nreturn { ...item, urgency, category, vendor_category, reasoning };\n",
+          "mode": "runOnceForEachItem"
+        }
+      },
+      {
+        "id": "vendor-1",
+        "name": "Vendor Lookup",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          660,
+          300
+        ],
+        "parameters": {
+          "jsCode": "\nconst item = $input.item.json;\nconst cat = item.vendor_category || 'general';\nconst vendors = {\n  plumbing:   { name: 'Demo Plumbing Co',    email: 'jtsomwaru+demo+plumbing@gmail.com',  phone: '555-0101' },\n  hvac:       { name: 'Demo HVAC Services',  email: 'jtsomwaru+demo+hvac@gmail.com',      phone: '555-0102' },\n  electrical: { name: 'Demo Electric Inc',   email: 'jtsomwaru+demo+electric@gmail.com',  phone: '555-0103' },\n  emergency:  { name: 'Demo Emergency 24/7', email: 'jtsomwaru+demo+emergency@gmail.com', phone: '555-0199' },\n  general:    { name: 'Demo General Works',  email: 'jtsomwaru+demo+general@gmail.com',   phone: '555-0100' }\n};\nconst sla = { routine: '72 hours', urgent: '24 hours', emergency: '2 hours' };\nconst vendor = vendors[cat] || vendors.general;\nreturn { ...item, vendor_assigned: vendor, sla_window: sla[item.urgency] || '72 hours' };\n",
+          "mode": "runOnceForEachItem"
+        }
+      },
+      {
+        "id": "resp-1",
+        "name": "Build Response",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          300
+        ],
+        "parameters": {
+          "jsCode": "\nconst item = $input.item.json;\nreturn {\n  ticket_id: item.ticket_id,\n  status: 'dispatched',\n  unit: item.unit,\n  tenant_name: item.tenant_name,\n  classification: { urgency: item.urgency, category: item.category, reasoning: item.reasoning },\n  vendor_assigned: item.vendor_assigned,\n  sla_window: item.sla_window,\n  emergency_alert_sent: item.urgency === 'emergency',\n  received_at: item.received_at\n};\n",
+          "mode": "runOnceForEachItem"
+        }
+      }
+    ],
+    "connections": {
+      "Maintenance Request Webhook": {
+        "main": [
+          [
+            {
+              "node": "Normalize Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Request": {
+        "main": [
+          [
+            {
+              "node": "AI Triage (Demo Rules)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Triage (Demo Rules)": {
+        "main": [
+          [
+            {
+              "node": "Vendor Lookup",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Vendor Lookup": {
+        "main": [
+          [
+            {
+              "node": "Build Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-17T12:54:55.903Z",
+        "id": 139,
+        "workflowId": "KFsT3zSrilh1EXrA",
+        "versionId": "e2b1dd23-f3ef-4ea5-9b4d-f50b83a99774",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}

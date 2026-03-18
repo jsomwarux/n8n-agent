@@ -1,0 +1,461 @@
+{
+  "updatedAt": "2026-02-25T22:07:02.276Z",
+  "createdAt": "2026-02-25T19:46:23.029Z",
+  "id": "AXA6MyAlF3dxEuBV",
+  "name": "Oswald RAG \u2014 Data Ingestion",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "loadData",
+      "name": "Load Mock Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Load mock data from webhook payload or manual trigger\ntry {\n  const input = $input.first().json;\n  // Webhook puts POST body under .body; manual trigger has data at top level\n  const source = input.body && (input.body.products || input.body.index_cards) ? input.body : input;\n  const products = source.products || [];\n  const indexCards = source.index_cards || [];\n  const items = [];\n  for (let i = 0; i < products.length; i++) {\n    const p = products[i];\n    items.push({ json: { content: p.content || '', source_type: 'shopify_product', sku: p.sku || '', title: p.title || '' } });\n  }\n  for (let i = 0; i < indexCards.length; i++) {\n    const c = indexCards[i];\n    items.push({ json: { content: c.content || '', source_type: 'index_card', id: c.id || '', manufacturer: c.manufacturer || '' } });\n  }\n  if (items.length === 0) {\n    throw new Error('No data provided. POST products and index_cards arrays.');\n  }\n  return items;\n} catch (error) {\n  return [{ json: { content: 'Error loading data: ' + error.message, source_type: 'error' } }];\n}"
+      }
+    },
+    {
+      "id": "vectorStore",
+      "name": "Oswald RAG Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "mode": "id",
+          "value": "oswald-rag"
+        },
+        "clearStore": true,
+        "embeddingBatchSize": 200
+      }
+    },
+    {
+      "id": "embeddings",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        340,
+        200
+      ],
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {
+          "dimensions": 1536
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "Ge6fSO1ncy7yTe5F",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "id": "docLoader",
+      "name": "Document Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentJsonInputLoader",
+      "typeVersion": 1,
+      "position": [
+        460,
+        200
+      ],
+      "parameters": {
+        "pointers": "/content"
+      }
+    },
+    {
+      "id": "logCompletion",
+      "name": "Log Completion",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "ready",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "Oswald RAG data loaded successfully",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "webhookIngest",
+      "name": "Webhook Ingest",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "oswald-ingest",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "webhookId": "18a0bba0-d36d-435e-923b-dc033194a9e8"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Mock Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Mock Data": {
+      "main": [
+        [
+          {
+            "node": "Oswald RAG Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Oswald RAG Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Oswald RAG Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Oswald RAG Store": {
+      "main": [
+        [
+          {
+            "node": "Log Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Ingest": {
+      "main": [
+        [
+          {
+            "node": "Load Mock Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "289ef80a-aa02-49ce-9258-390ec2e1f5b8",
+  "activeVersionId": "289ef80a-aa02-49ce-9258-390ec2e1f5b8",
+  "versionCounter": 32,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-02-25T19:46:23.030Z",
+      "createdAt": "2026-02-25T19:46:23.030Z",
+      "role": "workflow:owner",
+      "workflowId": "AXA6MyAlF3dxEuBV",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-02-25T22:07:02.277Z",
+    "createdAt": "2026-02-25T22:07:02.277Z",
+    "versionId": "289ef80a-aa02-49ce-9258-390ec2e1f5b8",
+    "workflowId": "AXA6MyAlF3dxEuBV",
+    "nodes": [
+      {
+        "id": "trigger",
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "loadData",
+        "name": "Load Mock Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// Load mock data from webhook payload or manual trigger\ntry {\n  const input = $input.first().json;\n  // Webhook puts POST body under .body; manual trigger has data at top level\n  const source = input.body && (input.body.products || input.body.index_cards) ? input.body : input;\n  const products = source.products || [];\n  const indexCards = source.index_cards || [];\n  const items = [];\n  for (let i = 0; i < products.length; i++) {\n    const p = products[i];\n    items.push({ json: { content: p.content || '', source_type: 'shopify_product', sku: p.sku || '', title: p.title || '' } });\n  }\n  for (let i = 0; i < indexCards.length; i++) {\n    const c = indexCards[i];\n    items.push({ json: { content: c.content || '', source_type: 'index_card', id: c.id || '', manufacturer: c.manufacturer || '' } });\n  }\n  if (items.length === 0) {\n    throw new Error('No data provided. POST products and index_cards arrays.');\n  }\n  return items;\n} catch (error) {\n  return [{ json: { content: 'Error loading data: ' + error.message, source_type: 'error' } }];\n}"
+        }
+      },
+      {
+        "id": "vectorStore",
+        "name": "Oswald RAG Store",
+        "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+        "typeVersion": 1.3,
+        "position": [
+          460,
+          0
+        ],
+        "parameters": {
+          "mode": "insert",
+          "memoryKey": {
+            "mode": "id",
+            "value": "oswald-rag"
+          },
+          "clearStore": true,
+          "embeddingBatchSize": 200
+        }
+      },
+      {
+        "id": "embeddings",
+        "name": "Embeddings OpenAI",
+        "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          340,
+          200
+        ],
+        "parameters": {
+          "model": "text-embedding-3-small",
+          "options": {
+            "dimensions": 1536
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "Ge6fSO1ncy7yTe5F",
+            "name": "OpenAI API"
+          }
+        }
+      },
+      {
+        "id": "docLoader",
+        "name": "Document Loader",
+        "type": "@n8n/n8n-nodes-langchain.documentJsonInputLoader",
+        "typeVersion": 1,
+        "position": [
+          460,
+          200
+        ],
+        "parameters": {
+          "pointers": "/content"
+        }
+      },
+      {
+        "id": "logCompletion",
+        "name": "Log Completion",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          700,
+          0
+        ],
+        "parameters": {
+          "mode": "manual",
+          "duplicateItem": false,
+          "assignments": {
+            "assignments": [
+              {
+                "id": "status",
+                "name": "status",
+                "value": "ready",
+                "type": "string"
+              },
+              {
+                "id": "message",
+                "name": "message",
+                "value": "Oswald RAG data loaded successfully",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "webhookIngest",
+        "name": "Webhook Ingest",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -220,
+          0
+        ],
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "oswald-ingest",
+          "responseMode": "lastNode",
+          "responseData": "firstEntryJson",
+          "options": {}
+        },
+        "webhookId": "18a0bba0-d36d-435e-923b-dc033194a9e8"
+      }
+    ],
+    "connections": {
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Load Mock Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Load Mock Data": {
+        "main": [
+          [
+            {
+              "node": "Oswald RAG Store",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Embeddings OpenAI": {
+        "ai_embedding": [
+          [
+            {
+              "node": "Oswald RAG Store",
+              "type": "ai_embedding",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Document Loader": {
+        "ai_document": [
+          [
+            {
+              "node": "Oswald RAG Store",
+              "type": "ai_document",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Oswald RAG Store": {
+        "main": [
+          [
+            {
+              "node": "Log Completion",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook Ingest": {
+        "main": [
+          [
+            {
+              "node": "Load Mock Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-02-25T22:07:02.294Z",
+        "id": 33,
+        "workflowId": "AXA6MyAlF3dxEuBV",
+        "versionId": "289ef80a-aa02-49ce-9258-390ec2e1f5b8",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      },
+      {
+        "createdAt": "2026-02-25T22:07:02.289Z",
+        "id": 32,
+        "workflowId": "AXA6MyAlF3dxEuBV",
+        "versionId": "289ef80a-aa02-49ce-9258-390ec2e1f5b8",
+        "event": "deactivated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}

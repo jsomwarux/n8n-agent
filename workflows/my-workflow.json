@@ -1,0 +1,60 @@
+{
+  "updatedAt": "2026-02-23T03:06:20.680Z",
+  "createdAt": "2026-02-23T03:06:20.680Z",
+  "id": "DPTcRq4hITjdRFrG",
+  "name": "My workflow",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "cb5c4344-5bfa-47f9-9124-611546e3e4c3",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6f186734-6651-48f2-9442-a3d1f1b2721f",
+      "name": "Webhook",
+      "webhookId": "cb5c4344-5bfa-47f9-9124-611546e3e4c3"
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "c53405c5-3007-48d1-8222-07ef7c8e7d84",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-02-23T03:06:20.682Z",
+      "createdAt": "2026-02-23T03:06:20.682Z",
+      "role": "workflow:owner",
+      "workflowId": "DPTcRq4hITjdRFrG",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": null
+}

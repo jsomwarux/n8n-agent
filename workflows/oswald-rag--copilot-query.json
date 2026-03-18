@@ -1,0 +1,859 @@
+{
+  "updatedAt": "2026-02-25T22:02:32.026Z",
+  "createdAt": "2026-02-25T21:51:55.796Z",
+  "id": "ZDHAqqnNysPCuE6H",
+  "name": "Oswald RAG \u2014 Copilot Query",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "oswald-intercom",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "f0a8aa4e-5ac6-435d-b8c5-9e6382a2594c"
+    },
+    {
+      "id": "parseInput",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Parse incoming webhook payload and detect language (EN vs ES)\ntry {\n  const startTime = Date.now();\n  const body = $input.first().json;\n  let customer_message = '';\n  let conversation_id = '';\n  if (body.customer_message) {\n    customer_message = body.customer_message;\n    conversation_id = body.conversation_id || '';\n  } else if (body.data && body.data.item) {\n    const item = body.data.item;\n    conversation_id = item.id || '';\n    const parts = item.conversation_parts || [];\n    if (parts.length > 0) {\n      customer_message = parts[parts.length - 1].body || '';\n    }\n    if (!customer_message && item.conversation_message) {\n      customer_message = item.conversation_message.body || '';\n    }\n  } else if (body.message) {\n    customer_message = body.message;\n  } else if (body.query) {\n    customer_message = body.query;\n  }\n  if (!customer_message) {\n    throw new Error('No customer message found in payload');\n  }\n  customer_message = customer_message.replace(/<[^>]*>/g, '').trim();\n  const spanishWords = ['necesito','tengo','caldera','v\\u00e1lvula','presi\\u00f3n','junta','tapita','inspecci\\u00f3n','tienen','pulgadas','urgente','frio','fr\\u00edo','calienta','puedo','hacer','qu\\u00e9','c\\u00f3mo','para','hola','buenos','d\\u00edas','inventario','una','del','los','las','est\\u00e1'];\n  const lowerMsg = customer_message.toLowerCase();\n  const spanishHits = spanishWords.filter(w => lowerMsg.includes(w)).length;\n  const hasAccents = /[\\u00e1\\u00e9\\u00ed\\u00f3\\u00fa\\u00f1\\u00bf\\u00a1\\u00fc]/.test(customer_message);\n  const language = (spanishHits >= 2 || (spanishHits >= 1 && hasAccents)) ? 'es' : 'en';\n  return [{ json: { customer_message, language, start_time: startTime, conversation_id } }];\n} catch (error) {\n  return [{ json: { customer_message: JSON.stringify($input.first().json), language: 'en', start_time: Date.now(), conversation_id: '', parse_error: error.message } }];\n}"
+      }
+    },
+    {
+      "id": "queryStore",
+      "name": "Query Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "mode": "load",
+        "memoryKey": {
+          "mode": "id",
+          "value": "oswald-rag"
+        },
+        "prompt": "={{ $json.customer_message }}",
+        "topK": 5,
+        "includeDocumentMetadata": true
+      }
+    },
+    {
+      "id": "embeddings",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        340,
+        200
+      ],
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {
+          "dimensions": 1536
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "Ge6fSO1ncy7yTe5F",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "id": "checkConfidence",
+      "name": "Check Confidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Analyze vector store results for confidence threshold\n// Escalate if < 2 results OR top similarity < 0.7\ntry {\n  const items = $input.all();\n  const parseData = $('Parse Input').first().json;\n  const resultCount = items.length;\n  const results = [];\n  for (let i = 0; i < items.length; i++) {\n    const item = items[i].json;\n    let content = '';\n    let metadata = {};\n    let score = 0;\n    if (item.document) {\n      content = item.document.pageContent || '';\n      metadata = item.document.metadata || {};\n    } else {\n      content = item.pageContent || item.content || item.text || '';\n      metadata = item.metadata || {};\n    }\n    score = item.score || item.similarity || 0;\n    results.push({ content, metadata, score, rank: i });\n  }\n  const hasEnoughResults = resultCount >= 2;\n  const topScore = results.length > 0 ? results[0].score : 0;\n  const hasGoodSimilarity = topScore === 0 || topScore >= 0.7;\n  const confident = hasEnoughResults && hasGoodSimilarity;\n  return [{ json: { confident, result_count: resultCount, top_score: topScore, results, customer_message: parseData.customer_message, language: parseData.language, start_time: parseData.start_time, conversation_id: parseData.conversation_id } }];\n} catch (error) {\n  const parseData = $('Parse Input').first().json;\n  return [{ json: { confident: false, result_count: 0, top_score: 0, results: [], customer_message: parseData.customer_message || '', language: parseData.language || 'en', start_time: parseData.start_time || Date.now(), conversation_id: parseData.conversation_id || '', confidence_error: error.message } }];\n}"
+      }
+    },
+    {
+      "id": "routeConfidence",
+      "name": "Route by Confidence",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.confident }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "buildPrompt",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -150
+      ],
+      "parameters": {
+        "jsCode": "// Build context and Anthropic API request body for Claude synthesis\ntry {\n  const data = $input.first().json;\n  const results = data.results || [];\n  const language = data.language;\n  const customer_message = data.customer_message;\n  const contextParts = [];\n  const skuRefs = [];\n  for (let i = 0; i < results.length; i++) {\n    const r = results[i];\n    const content = r.content || '';\n    const skuMatches = content.match(/SKU:\\s*(oswald-[a-z0-9.\\-]+)/gi);\n    if (skuMatches) {\n      for (let j = 0; j < skuMatches.length; j++) {\n        const sku = skuMatches[j].replace(/SKU:\\s*/i, '');\n        if (!skuRefs.includes(sku)) { skuRefs.push(sku); }\n      }\n    }\n    contextParts.push('[Result ' + (i + 1) + ']\\n' + content);\n  }\n  const contextString = contextParts.join('\\n\\n');\n  const langLabel = language === 'es' ? 'Spanish' : 'English';\n  const systemPrompt = 'You are the product knowledge assistant for H.C. Oswald Supply Co., a boiler parts wholesaler at 725 Whittier St, Bronx NY, founded 1923. You have 103 years of institutional knowledge about heating system parts.\\n\\nRULES:\\n1. Answer ONLY from the provided context. Do not invent part numbers or prices.\\n2. Include: part name, SKU if available, price, substitution option if primary part is unavailable.\\n3. If the part is not in context, say: We may not carry this. Please call 718-620-1400 during business hours (Mon-Fri 7:30AM-5PM).\\n4. Answer in the SAME LANGUAGE as the customer query (' + langLabel + ').\\n5. Be concise. This is a chat message.\\n6. For discontinued parts, mention substitution options from context.\\n7. Include price ranges when available.\\n8. If the customer describes an emergency, acknowledge urgency and suggest relevant parts from context.';\n  const userMessage = 'Context:\\n' + contextString + '\\n\\nCustomer query: ' + customer_message;\n  const anthropicBody = JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 400, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] });\n  return [{ json: { anthropic_body: anthropicBody, sku_references: skuRefs, result_count: data.result_count, top_score: data.top_score, language: data.language, start_time: data.start_time, customer_message: data.customer_message, conversation_id: data.conversation_id } }];\n} catch (error) {\n  const fallbackBody = JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 400, system: 'You are a helpful boiler parts assistant.', messages: [{ role: 'user', content: 'An error occurred building context. Please apologize and suggest calling 718-620-1400.' }] });\n  return [{ json: { anthropic_body: fallbackBody, sku_references: [], result_count: 0, top_score: 0, language: 'en', start_time: Date.now(), customer_message: '', conversation_id: '', build_error: error.message } }];\n}"
+      }
+    },
+    {
+      "id": "claudeSynthesis",
+      "name": "Claude Synthesis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1320,
+        -150
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.anthropic_body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "formatSuccess",
+      "name": "Format Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -150
+      ],
+      "parameters": {
+        "jsCode": "// Format the success response from Claude's answer\ntry {\n  const promptData = $('Build Prompt').first().json;\n  const claudeRes = $input.first().json;\n  let answer = '';\n  if (claudeRes.content && Array.isArray(claudeRes.content) && claudeRes.content.length > 0) {\n    answer = claudeRes.content[0].text || '';\n  } else if (claudeRes.text) {\n    answer = claudeRes.text;\n  } else {\n    answer = JSON.stringify(claudeRes);\n  }\n  const latency_ms = Date.now() - promptData.start_time;\n  let confidence_score = 0;\n  const rc = promptData.result_count || 0;\n  if (rc >= 4) { confidence_score = 0.95; }\n  else if (rc >= 3) { confidence_score = 0.85; }\n  else if (rc >= 2) { confidence_score = 0.75; }\n  else { confidence_score = 0.6; }\n  if (promptData.top_score > 0 && promptData.top_score < confidence_score) {\n    confidence_score = promptData.top_score;\n  }\n  return [{ json: { answer, sku_references: promptData.sku_references || [], confidence_score: Math.round(confidence_score * 100) / 100, language_detected: promptData.language, latency_ms } }];\n} catch (error) {\n  return [{ json: { answer: 'An error occurred. Please call 718-620-1400.', sku_references: [], confidence_score: 0, language_detected: 'en', latency_ms: 0, format_error: error.message } }];\n}"
+      }
+    },
+    {
+      "id": "respondSuccess",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1760,
+        -150
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      }
+    },
+    {
+      "id": "formatEscalation",
+      "name": "Format Escalation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        150
+      ],
+      "parameters": {
+        "jsCode": "// Format escalation response for low-confidence queries\ntry {\n  const data = $input.first().json;\n  const language = data.language || 'en';\n  const latency_ms = Date.now() - (data.start_time || Date.now());\n  const fallback_en = 'Let me connect you with our team. For immediate help, call 718-620-1400 (Mon-Fri 7:30AM-5PM).';\n  const fallback_es = 'Perm\\u00edtame conectarlo con nuestro equipo. Para ayuda inmediata, llame al 718-620-1400 (Lun-Vie 7:30AM-5PM).';\n  return [{ json: { escalate: true, reason: 'low_confidence', fallback_message: language === 'es' ? fallback_es : fallback_en, language_detected: language, latency_ms } }];\n} catch (error) {\n  return [{ json: { escalate: true, reason: 'error', fallback_message: 'Let me connect you with our team. Call 718-620-1400.', language_detected: 'en', latency_ms: 0 } }];\n}"
+      }
+    },
+    {
+      "id": "respondEscalation",
+      "name": "Respond Escalation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1320,
+        150
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      }
+    },
+    {
+      "id": "errorTrigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "errorResponse",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        400
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error",
+              "name": "error",
+              "value": "true",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "An error occurred. Please call 718-620-1400.",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Query Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Query Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Check Confidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Confidence": {
+      "main": [
+        [
+          {
+            "node": "Route by Confidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Confidence": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Synthesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Synthesis": {
+      "main": [
+        [
+          {
+            "node": "Format Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Escalation": {
+      "main": [
+        [
+          {
+            "node": "Respond Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "3a602015-71b7-4a83-af1c-433ff9ae018a",
+  "activeVersionId": "3a602015-71b7-4a83-af1c-433ff9ae018a",
+  "versionCounter": 17,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-02-25T21:51:55.798Z",
+      "createdAt": "2026-02-25T21:51:55.798Z",
+      "role": "workflow:owner",
+      "workflowId": "ZDHAqqnNysPCuE6H",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-02-25T22:02:32.027Z",
+    "createdAt": "2026-02-25T22:02:32.027Z",
+    "versionId": "3a602015-71b7-4a83-af1c-433ff9ae018a",
+    "workflowId": "ZDHAqqnNysPCuE6H",
+    "nodes": [
+      {
+        "id": "webhook",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "oswald-intercom",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "onError": "continueRegularOutput",
+        "webhookId": "f0a8aa4e-5ac6-435d-b8c5-9e6382a2594c"
+      },
+      {
+        "id": "parseInput",
+        "name": "Parse Input",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// Parse incoming webhook payload and detect language (EN vs ES)\ntry {\n  const startTime = Date.now();\n  const body = $input.first().json;\n  let customer_message = '';\n  let conversation_id = '';\n  if (body.customer_message) {\n    customer_message = body.customer_message;\n    conversation_id = body.conversation_id || '';\n  } else if (body.data && body.data.item) {\n    const item = body.data.item;\n    conversation_id = item.id || '';\n    const parts = item.conversation_parts || [];\n    if (parts.length > 0) {\n      customer_message = parts[parts.length - 1].body || '';\n    }\n    if (!customer_message && item.conversation_message) {\n      customer_message = item.conversation_message.body || '';\n    }\n  } else if (body.message) {\n    customer_message = body.message;\n  } else if (body.query) {\n    customer_message = body.query;\n  }\n  if (!customer_message) {\n    throw new Error('No customer message found in payload');\n  }\n  customer_message = customer_message.replace(/<[^>]*>/g, '').trim();\n  const spanishWords = ['necesito','tengo','caldera','v\\u00e1lvula','presi\\u00f3n','junta','tapita','inspecci\\u00f3n','tienen','pulgadas','urgente','frio','fr\\u00edo','calienta','puedo','hacer','qu\\u00e9','c\\u00f3mo','para','hola','buenos','d\\u00edas','inventario','una','del','los','las','est\\u00e1'];\n  const lowerMsg = customer_message.toLowerCase();\n  const spanishHits = spanishWords.filter(w => lowerMsg.includes(w)).length;\n  const hasAccents = /[\\u00e1\\u00e9\\u00ed\\u00f3\\u00fa\\u00f1\\u00bf\\u00a1\\u00fc]/.test(customer_message);\n  const language = (spanishHits >= 2 || (spanishHits >= 1 && hasAccents)) ? 'es' : 'en';\n  return [{ json: { customer_message, language, start_time: startTime, conversation_id } }];\n} catch (error) {\n  return [{ json: { customer_message: JSON.stringify($input.first().json), language: 'en', start_time: Date.now(), conversation_id: '', parse_error: error.message } }];\n}"
+        }
+      },
+      {
+        "id": "queryStore",
+        "name": "Query Vector Store",
+        "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+        "typeVersion": 1.3,
+        "position": [
+          440,
+          0
+        ],
+        "parameters": {
+          "mode": "load",
+          "memoryKey": {
+            "mode": "id",
+            "value": "oswald-rag"
+          },
+          "prompt": "={{ $json.customer_message }}",
+          "topK": 5,
+          "includeDocumentMetadata": true
+        }
+      },
+      {
+        "id": "embeddings",
+        "name": "Embeddings OpenAI",
+        "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          340,
+          200
+        ],
+        "parameters": {
+          "model": "text-embedding-3-small",
+          "options": {
+            "dimensions": 1536
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "Ge6fSO1ncy7yTe5F",
+            "name": "OpenAI API"
+          }
+        }
+      },
+      {
+        "id": "checkConfidence",
+        "name": "Check Confidence",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          660,
+          0
+        ],
+        "parameters": {
+          "jsCode": "// Analyze vector store results for confidence threshold\n// Escalate if < 2 results OR top similarity < 0.7\ntry {\n  const items = $input.all();\n  const parseData = $('Parse Input').first().json;\n  const resultCount = items.length;\n  const results = [];\n  for (let i = 0; i < items.length; i++) {\n    const item = items[i].json;\n    let content = '';\n    let metadata = {};\n    let score = 0;\n    if (item.document) {\n      content = item.document.pageContent || '';\n      metadata = item.document.metadata || {};\n    } else {\n      content = item.pageContent || item.content || item.text || '';\n      metadata = item.metadata || {};\n    }\n    score = item.score || item.similarity || 0;\n    results.push({ content, metadata, score, rank: i });\n  }\n  const hasEnoughResults = resultCount >= 2;\n  const topScore = results.length > 0 ? results[0].score : 0;\n  const hasGoodSimilarity = topScore === 0 || topScore >= 0.7;\n  const confident = hasEnoughResults && hasGoodSimilarity;\n  return [{ json: { confident, result_count: resultCount, top_score: topScore, results, customer_message: parseData.customer_message, language: parseData.language, start_time: parseData.start_time, conversation_id: parseData.conversation_id } }];\n} catch (error) {\n  const parseData = $('Parse Input').first().json;\n  return [{ json: { confident: false, result_count: 0, top_score: 0, results: [], customer_message: parseData.customer_message || '', language: parseData.language || 'en', start_time: parseData.start_time || Date.now(), conversation_id: parseData.conversation_id || '', confidence_error: error.message } }];\n}"
+        }
+      },
+      {
+        "id": "routeConfidence",
+        "name": "Route by Confidence",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          880,
+          0
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "leftValue": "",
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "condition1",
+                "leftValue": "={{ $json.confident }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        }
+      },
+      {
+        "id": "buildPrompt",
+        "name": "Build Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1100,
+          -150
+        ],
+        "parameters": {
+          "jsCode": "// Build context and Anthropic API request body for Claude synthesis\ntry {\n  const data = $input.first().json;\n  const results = data.results || [];\n  const language = data.language;\n  const customer_message = data.customer_message;\n  const contextParts = [];\n  const skuRefs = [];\n  for (let i = 0; i < results.length; i++) {\n    const r = results[i];\n    const content = r.content || '';\n    const skuMatches = content.match(/SKU:\\s*(oswald-[a-z0-9.\\-]+)/gi);\n    if (skuMatches) {\n      for (let j = 0; j < skuMatches.length; j++) {\n        const sku = skuMatches[j].replace(/SKU:\\s*/i, '');\n        if (!skuRefs.includes(sku)) { skuRefs.push(sku); }\n      }\n    }\n    contextParts.push('[Result ' + (i + 1) + ']\\n' + content);\n  }\n  const contextString = contextParts.join('\\n\\n');\n  const langLabel = language === 'es' ? 'Spanish' : 'English';\n  const systemPrompt = 'You are the product knowledge assistant for H.C. Oswald Supply Co., a boiler parts wholesaler at 725 Whittier St, Bronx NY, founded 1923. You have 103 years of institutional knowledge about heating system parts.\\n\\nRULES:\\n1. Answer ONLY from the provided context. Do not invent part numbers or prices.\\n2. Include: part name, SKU if available, price, substitution option if primary part is unavailable.\\n3. If the part is not in context, say: We may not carry this. Please call 718-620-1400 during business hours (Mon-Fri 7:30AM-5PM).\\n4. Answer in the SAME LANGUAGE as the customer query (' + langLabel + ').\\n5. Be concise. This is a chat message.\\n6. For discontinued parts, mention substitution options from context.\\n7. Include price ranges when available.\\n8. If the customer describes an emergency, acknowledge urgency and suggest relevant parts from context.';\n  const userMessage = 'Context:\\n' + contextString + '\\n\\nCustomer query: ' + customer_message;\n  const anthropicBody = JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 400, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] });\n  return [{ json: { anthropic_body: anthropicBody, sku_references: skuRefs, result_count: data.result_count, top_score: data.top_score, language: data.language, start_time: data.start_time, customer_message: data.customer_message, conversation_id: data.conversation_id } }];\n} catch (error) {\n  const fallbackBody = JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 400, system: 'You are a helpful boiler parts assistant.', messages: [{ role: 'user', content: 'An error occurred building context. Please apologize and suggest calling 718-620-1400.' }] });\n  return [{ json: { anthropic_body: fallbackBody, sku_references: [], result_count: 0, top_score: 0, language: 'en', start_time: Date.now(), customer_message: '', conversation_id: '', build_error: error.message } }];\n}"
+        }
+      },
+      {
+        "id": "claudeSynthesis",
+        "name": "Claude Synthesis",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          1320,
+          -150
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.anthropic.com/v1/messages",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "anthropicApi",
+          "sendHeaders": true,
+          "specifyHeaders": "keypair",
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "anthropic-version",
+                "value": "2023-06-01"
+              },
+              {
+                "name": "content-type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "json",
+          "specifyBody": "json",
+          "jsonBody": "={{ $json.anthropic_body }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "formatSuccess",
+        "name": "Format Success",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1540,
+          -150
+        ],
+        "parameters": {
+          "jsCode": "// Format the success response from Claude's answer\ntry {\n  const promptData = $('Build Prompt').first().json;\n  const claudeRes = $input.first().json;\n  let answer = '';\n  if (claudeRes.content && Array.isArray(claudeRes.content) && claudeRes.content.length > 0) {\n    answer = claudeRes.content[0].text || '';\n  } else if (claudeRes.text) {\n    answer = claudeRes.text;\n  } else {\n    answer = JSON.stringify(claudeRes);\n  }\n  const latency_ms = Date.now() - promptData.start_time;\n  let confidence_score = 0;\n  const rc = promptData.result_count || 0;\n  if (rc >= 4) { confidence_score = 0.95; }\n  else if (rc >= 3) { confidence_score = 0.85; }\n  else if (rc >= 2) { confidence_score = 0.75; }\n  else { confidence_score = 0.6; }\n  if (promptData.top_score > 0 && promptData.top_score < confidence_score) {\n    confidence_score = promptData.top_score;\n  }\n  return [{ json: { answer, sku_references: promptData.sku_references || [], confidence_score: Math.round(confidence_score * 100) / 100, language_detected: promptData.language, latency_ms } }];\n} catch (error) {\n  return [{ json: { answer: 'An error occurred. Please call 718-620-1400.', sku_references: [], confidence_score: 0, language_detected: 'en', latency_ms: 0, format_error: error.message } }];\n}"
+        }
+      },
+      {
+        "id": "respondSuccess",
+        "name": "Respond Success",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          1760,
+          -150
+        ],
+        "parameters": {
+          "respondWith": "firstIncomingItem",
+          "options": {}
+        }
+      },
+      {
+        "id": "formatEscalation",
+        "name": "Format Escalation",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1100,
+          150
+        ],
+        "parameters": {
+          "jsCode": "// Format escalation response for low-confidence queries\ntry {\n  const data = $input.first().json;\n  const language = data.language || 'en';\n  const latency_ms = Date.now() - (data.start_time || Date.now());\n  const fallback_en = 'Let me connect you with our team. For immediate help, call 718-620-1400 (Mon-Fri 7:30AM-5PM).';\n  const fallback_es = 'Perm\\u00edtame conectarlo con nuestro equipo. Para ayuda inmediata, llame al 718-620-1400 (Lun-Vie 7:30AM-5PM).';\n  return [{ json: { escalate: true, reason: 'low_confidence', fallback_message: language === 'es' ? fallback_es : fallback_en, language_detected: language, latency_ms } }];\n} catch (error) {\n  return [{ json: { escalate: true, reason: 'error', fallback_message: 'Let me connect you with our team. Call 718-620-1400.', language_detected: 'en', latency_ms: 0 } }];\n}"
+        }
+      },
+      {
+        "id": "respondEscalation",
+        "name": "Respond Escalation",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          1320,
+          150
+        ],
+        "parameters": {
+          "respondWith": "firstIncomingItem",
+          "options": {}
+        }
+      },
+      {
+        "id": "errorTrigger",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          400
+        ],
+        "parameters": {}
+      },
+      {
+        "id": "errorResponse",
+        "name": "Error Response",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          220,
+          400
+        ],
+        "parameters": {
+          "mode": "manual",
+          "duplicateItem": false,
+          "assignments": {
+            "assignments": [
+              {
+                "id": "error",
+                "name": "error",
+                "value": "true",
+                "type": "string"
+              },
+              {
+                "id": "message",
+                "name": "message",
+                "value": "An error occurred. Please call 718-620-1400.",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Parse Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Input": {
+        "main": [
+          [
+            {
+              "node": "Query Vector Store",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Embeddings OpenAI": {
+        "ai_embedding": [
+          [
+            {
+              "node": "Query Vector Store",
+              "type": "ai_embedding",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Query Vector Store": {
+        "main": [
+          [
+            {
+              "node": "Check Confidence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Confidence": {
+        "main": [
+          [
+            {
+              "node": "Route by Confidence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route by Confidence": {
+        "main": [
+          [
+            {
+              "node": "Build Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Escalation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Prompt": {
+        "main": [
+          [
+            {
+              "node": "Claude Synthesis",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claude Synthesis": {
+        "main": [
+          [
+            {
+              "node": "Format Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Success": {
+        "main": [
+          [
+            {
+              "node": "Respond Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Escalation": {
+        "main": [
+          [
+            {
+              "node": "Respond Escalation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Error Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-02-25T22:02:32.570Z",
+        "id": 31,
+        "workflowId": "ZDHAqqnNysPCuE6H",
+        "versionId": "3a602015-71b7-4a83-af1c-433ff9ae018a",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}

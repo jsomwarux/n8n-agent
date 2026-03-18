@@ -1,0 +1,1389 @@
+{
+  "updatedAt": "2026-03-04T19:28:15.096Z",
+  "createdAt": "2026-03-04T16:45:21.254Z",
+  "id": "Hd0eJo1uRKb1JJHy",
+  "name": "Job Completion Automation \u2014 Construction Demo",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "job-complete",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Job Complete",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "job-complete-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const required = ['job_id', 'customer_name', 'customer_email', 'job_type', 'technician_name', 'labor_hours', 'labor_rate', 'materials_cost'];\n  const missing = required.filter(f => body[f] === undefined || body[f] === null || body[f] === '');\n  if (missing.length > 0) {\n    throw new Error('Missing required fields: ' + missing.join(', '));\n  }\n  const labor_hours = Number(body.labor_hours);\n  const labor_rate = Number(body.labor_rate);\n  const materials_cost = Number(body.materials_cost);\n  const labor_total = labor_hours * labor_rate;\n  const materials_markup = materials_cost * 0.15;\n  const job_total = labor_total + materials_cost + materials_markup;\n  const is_emergency = body.is_emergency === true || body.is_emergency === 'true';\n  const priority = is_emergency ? 'EMERGENCY' : 'STANDARD';\n  const ts = body.completion_timestamp || new Date().toISOString();\n  const dateObj = new Date(ts);\n  const completion_date = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });\n  return [{ json: { job_id: body.job_id, customer_name: body.customer_name, customer_email: body.customer_email, customer_phone: body.customer_phone || '', job_type: body.job_type, technician_name: body.technician_name, address: body.address || '', job_description: body.job_description || '', labor_hours, labor_rate, materials_cost, labor_total, materials_markup, job_total: Math.round(job_total * 100) / 100, is_emergency, priority, completion_timestamp: ts, completion_date } }];\n} catch (err) {\n  throw new Error('Parse & Validate failed: ' + err.message);\n}"
+      },
+      "id": "parse-validate",
+      "name": "Parse & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const d = $input.first().json;\n  const lines = [\n    '======= INVOICE - ' + d.job_type.toUpperCase() + ' SERVICE =======',\n    '',\n    'Job ID:       ' + d.job_id,\n    'Date:         ' + d.completion_date,\n    'Technician:   ' + d.technician_name,\n    'Customer:     ' + d.customer_name,\n    'Address:      ' + d.address,\n    '',\n    '--- DESCRIPTION ---',\n    d.job_description,\n    '',\n    '--- LINE ITEMS ---',\n    'Labor:              ' + d.labor_hours + ' hrs @ $' + d.labor_rate.toFixed(2) + '/hr    $' + d.labor_total.toFixed(2),\n    'Materials:                                $' + d.materials_cost.toFixed(2),\n    'Materials Markup (15%):                   $' + d.materials_markup.toFixed(2),\n    '-------------------------------------------',\n    'TOTAL DUE:                                $' + d.job_total.toFixed(2),\n    '===========================================',\n    '',\n    'Payment due within 30 days.',\n    'For questions, contact us at (212) 555-0100.',\n    'Thank you for choosing our services!'\n  ];\n  return [{ json: { ...d, invoice_text: lines.join('\\n'), invoice_generated: true } }];\n} catch (err) {\n  throw new Error('Build Invoice failed: ' + err.message);\n}"
+      },
+      "id": "build-invoice",
+      "name": "Build Invoice Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-emergency-check",
+              "leftValue": "={{ $json.is_emergency }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-emergency",
+      "name": "Is Emergency?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, subject_prefix: 'URGENT: ' } }];"
+      },
+      "id": "set-emergency",
+      "name": "Set Emergency Prefix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, subject_prefix: '' } }];"
+      },
+      "id": "set-standard",
+      "name": "Set Standard Prefix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "id": "send-invoice",
+      "name": "Mock Send Invoice Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.customer_email }}",
+        "subject": "={{ ($json.subject_prefix || '') + 'Invoice \u2014 ' + $json.job_type + ' Service \u2014 ' + $json.customer_name }}",
+        "emailType": "text",
+        "message": "=Dear {{ $json.customer_name }},\n\nThank you for choosing our {{ $json.job_type.toLowerCase() }} services. Please find your invoice details below.\n\n{{ $json.invoice_text }}\n\nPayment due within 30 days. For questions, contact us at (212) 555-0100.\n\nBest regards,\n{{ $json.technician_name }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "log-job-csv",
+      "name": "Log Job to CSV",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $('Build Invoice Summary').item.json.completion_date }}",
+            "Job ID": "={{ $('Build Invoice Summary').item.json.job_id }}",
+            "Customer Name": "={{ $('Build Invoice Summary').item.json.customer_name }}",
+            "Customer Email": "={{ $('Build Invoice Summary').item.json.customer_email }}",
+            "Job Type": "={{ $('Build Invoice Summary').item.json.job_type }}",
+            "Technician": "={{ $('Build Invoice Summary').item.json.technician_name }}",
+            "Address": "={{ $('Build Invoice Summary').item.json.address }}",
+            "Total ($)": "={{ $('Build Invoice Summary').item.json.job_total }}",
+            "Emergency": "={{ $('Build Invoice Summary').item.json.is_emergency ? 'Y' : 'N' }}",
+            "Invoice Sent": "=Y",
+            "Status": "=Complete"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Job ID",
+              "displayName": "Job ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Customer Name",
+              "displayName": "Customer Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Customer Email",
+              "displayName": "Customer Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Job Type",
+              "displayName": "Job Type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Technician",
+              "displayName": "Technician",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Total ($)",
+              "displayName": "Total ($)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Emergency",
+              "displayName": "Emergency",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Invoice Sent",
+              "displayName": "Invoice Sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "removed": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeZOA9lJuS7gGgES",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "seconds"
+      },
+      "id": "wait-node",
+      "name": "Wait 6 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        300
+      ]
+    },
+    {
+      "id": "send-review",
+      "name": "Mock Send Review Request",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $('Build Invoice Summary').item.json.customer_email }}",
+        "subject": "={{ 'How did we do today, ' + $('Build Invoice Summary').item.json.customer_name + '?' }}",
+        "emailType": "text",
+        "message": "={{ 'Hi ' + $('Build Invoice Summary').item.json.customer_name + ',\\n\\nI just wanted to personally thank you for trusting us with your ' + $('Build Invoice Summary').item.json.job_type.toLowerCase() + ' work today. It was a pleasure taking care of things at ' + $('Build Invoice Summary').item.json.address + '.\\n\\nIf you have a moment, a quick Google review would mean the world to our team \u2014 it helps other homeowners in the area find reliable service:\\n\\nhttps://g.page/r/[YOUR-GOOGLE-REVIEW-LINK]\\n\\nThanks again,\\n' + $('Build Invoice Summary').item.json.technician_name }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "r3IbVQkW0d0j3icY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "upsell-check",
+              "leftValue": "={{ $json.job_total }}",
+              "rightValue": 500,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-upsell",
+      "name": "Upsell Flag Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, upsell_opportunity: true, upsell_note: 'High-value job - consider maintenance contract upsell' } }];"
+      },
+      "id": "set-upsell-true",
+      "name": "Upsell: Yes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, upsell_opportunity: false } }];"
+      },
+      "id": "set-upsell-false",
+      "name": "Upsell: No",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const d = $input.first().json;\n  const actions = ['parse_validate', 'build_invoice', 'emergency_check', 'send_invoice_email', 'log_job_csv', 'wait_cooldown', 'send_review_request', 'upsell_check'];\n  return [{ json: { workflow_status: 'success', timestamp: new Date().toISOString(), job_id: d.job_id, customer_name: d.customer_name, job_type: d.job_type, job_total: d.job_total, priority: d.priority, upsell_opportunity: d.upsell_opportunity || false, upsell_note: d.upsell_note || '', actions_taken: actions, email_subject: d.email_subject, review_subject: d.review_subject, csv_row: d.csv_row } }];\n} catch (err) {\n  throw new Error('Final Status failed: ' + err.message);\n}"
+      },
+      "id": "final-status",
+      "name": "Final Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '\u2705 Job Complete \u2014 ' + $('Build Invoice Summary').item.json.customer_name + ' | ' + $('Build Invoice Summary').item.json.job_type + ' | $' + $('Build Invoice Summary').item.json.job_total.toFixed(2) + ' | Tech: ' + $('Build Invoice Summary').item.json.technician_name + ($('Build Invoice Summary').item.json.is_emergency ? ' | \ud83d\udea8 EMERGENCY' : '') + ($('Build Invoice Summary').item.json.job_total > 500 ? ' | \ud83d\udd25 Upsell Flag' : '') }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "slack-notify",
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const error = $input.first().json;\n  const execution = error.execution || {};\n  const lastNode = execution.lastNodeExecuted || 'unknown';\n  const errorMsg = execution.error ? execution.error.message : 'Unknown error';\n  let jobId = 'unknown';\n  try {\n    const data = execution.data;\n    if (data && data.resultData && data.resultData.runData) {\n      const webhookData = data.resultData.runData['Webhook: Job Complete'];\n      if (webhookData && webhookData[0] && webhookData[0].data && webhookData[0].data.main && webhookData[0].data.main[0]) {\n        jobId = webhookData[0].data.main[0][0].json.body.job_id || 'unknown';\n      }\n    }\n  } catch(e) {}\n  return [{ json: { error_type: 'workflow_failure', failed_node: lastNode, error_message: errorMsg, job_id: jobId, timestamp: new Date().toISOString() } }];\n} catch (err) {\n  return [{ json: { error_type: 'error_handler_failure', error_message: err.message, timestamp: new Date().toISOString() } }];\n}"
+      },
+      "id": "set-error-details",
+      "name": "Log Error Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://webhook.site/1582945c-8636-40de-984e-55fa460c20fb",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'error_alert', channel: '#alerts', text: 'WORKFLOW ERROR - Node: ' + $json.failed_node + ' | Error: ' + $json.error_message + ' | Job: ' + $json.job_id }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "error-alert",
+      "name": "Error Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        600
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Webhook: Job Complete": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate": {
+      "main": [
+        [
+          {
+            "node": "Build Invoice Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Invoice Summary": {
+      "main": [
+        [
+          {
+            "node": "Is Emergency?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Emergency?": {
+      "main": [
+        [
+          {
+            "node": "Set Emergency Prefix",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Standard Prefix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Emergency Prefix": {
+      "main": [
+        [
+          {
+            "node": "Mock Send Invoice Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Standard Prefix": {
+      "main": [
+        [
+          {
+            "node": "Mock Send Invoice Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Send Invoice Email": {
+      "main": [
+        [
+          {
+            "node": "Log Job to CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Job to CSV": {
+      "main": [
+        [
+          {
+            "node": "Wait 6 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 6 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Mock Send Review Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Send Review Request": {
+      "main": [
+        [
+          {
+            "node": "Upsell Flag Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsell Flag Check": {
+      "main": [
+        [
+          {
+            "node": "Upsell: Yes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsell: No",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsell: Yes": {
+      "main": [
+        [
+          {
+            "node": "Final Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsell: No": {
+      "main": [
+        [
+          {
+            "node": "Final Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Status": {
+      "main": [
+        [
+          {
+            "node": "Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Details": {
+      "main": [
+        [
+          {
+            "node": "Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "d663734f-4a68-4abb-87a4-bf8ae67e95ab",
+  "activeVersionId": "d663734f-4a68-4abb-87a4-bf8ae67e95ab",
+  "versionCounter": 25,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-04T16:45:21.254Z",
+      "createdAt": "2026-03-04T16:45:21.254Z",
+      "role": "workflow:owner",
+      "workflowId": "Hd0eJo1uRKb1JJHy",
+      "projectId": "tBICjiBXRXwDo4bR",
+      "project": {
+        "updatedAt": "2026-02-23T01:25:41.852Z",
+        "createdAt": "2026-02-23T01:18:14.818Z",
+        "id": "tBICjiBXRXwDo4bR",
+        "name": "JT Somwaru <jsomwarux@yahoo.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-04T19:28:15.096Z",
+    "createdAt": "2026-03-04T19:28:15.096Z",
+    "versionId": "d663734f-4a68-4abb-87a4-bf8ae67e95ab",
+    "workflowId": "Hd0eJo1uRKb1JJHy",
+    "nodes": [
+      {
+        "parameters": {
+          "path": "job-complete",
+          "httpMethod": "POST",
+          "responseMode": "onReceived",
+          "options": {}
+        },
+        "id": "webhook-trigger",
+        "name": "Webhook: Job Complete",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          300
+        ],
+        "webhookId": "job-complete-webhook"
+      },
+      {
+        "parameters": {
+          "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const required = ['job_id', 'customer_name', 'customer_email', 'job_type', 'technician_name', 'labor_hours', 'labor_rate', 'materials_cost'];\n  const missing = required.filter(f => body[f] === undefined || body[f] === null || body[f] === '');\n  if (missing.length > 0) {\n    throw new Error('Missing required fields: ' + missing.join(', '));\n  }\n  const labor_hours = Number(body.labor_hours);\n  const labor_rate = Number(body.labor_rate);\n  const materials_cost = Number(body.materials_cost);\n  const labor_total = labor_hours * labor_rate;\n  const materials_markup = materials_cost * 0.15;\n  const job_total = labor_total + materials_cost + materials_markup;\n  const is_emergency = body.is_emergency === true || body.is_emergency === 'true';\n  const priority = is_emergency ? 'EMERGENCY' : 'STANDARD';\n  const ts = body.completion_timestamp || new Date().toISOString();\n  const dateObj = new Date(ts);\n  const completion_date = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });\n  return [{ json: { job_id: body.job_id, customer_name: body.customer_name, customer_email: body.customer_email, customer_phone: body.customer_phone || '', job_type: body.job_type, technician_name: body.technician_name, address: body.address || '', job_description: body.job_description || '', labor_hours, labor_rate, materials_cost, labor_total, materials_markup, job_total: Math.round(job_total * 100) / 100, is_emergency, priority, completion_timestamp: ts, completion_date } }];\n} catch (err) {\n  throw new Error('Parse & Validate failed: ' + err.message);\n}"
+        },
+        "id": "parse-validate",
+        "name": "Parse & Validate",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "try {\n  const d = $input.first().json;\n  const lines = [\n    '======= INVOICE - ' + d.job_type.toUpperCase() + ' SERVICE =======',\n    '',\n    'Job ID:       ' + d.job_id,\n    'Date:         ' + d.completion_date,\n    'Technician:   ' + d.technician_name,\n    'Customer:     ' + d.customer_name,\n    'Address:      ' + d.address,\n    '',\n    '--- DESCRIPTION ---',\n    d.job_description,\n    '',\n    '--- LINE ITEMS ---',\n    'Labor:              ' + d.labor_hours + ' hrs @ $' + d.labor_rate.toFixed(2) + '/hr    $' + d.labor_total.toFixed(2),\n    'Materials:                                $' + d.materials_cost.toFixed(2),\n    'Materials Markup (15%):                   $' + d.materials_markup.toFixed(2),\n    '-------------------------------------------',\n    'TOTAL DUE:                                $' + d.job_total.toFixed(2),\n    '===========================================',\n    '',\n    'Payment due within 30 days.',\n    'For questions, contact us at (212) 555-0100.',\n    'Thank you for choosing our services!'\n  ];\n  return [{ json: { ...d, invoice_text: lines.join('\\n'), invoice_generated: true } }];\n} catch (err) {\n  throw new Error('Build Invoice failed: ' + err.message);\n}"
+        },
+        "id": "build-invoice",
+        "name": "Build Invoice Summary",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "is-emergency-check",
+                "leftValue": "={{ $json.is_emergency }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "if-emergency",
+        "name": "Is Emergency?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          660,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, subject_prefix: 'URGENT: ' } }];"
+        },
+        "id": "set-emergency",
+        "name": "Set Emergency Prefix",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, subject_prefix: '' } }];"
+        },
+        "id": "set-standard",
+        "name": "Set Standard Prefix",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          400
+        ]
+      },
+      {
+        "id": "send-invoice",
+        "name": "Mock Send Invoice Email",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          1100,
+          300
+        ],
+        "parameters": {
+          "operation": "send",
+          "sendTo": "={{ $json.customer_email }}",
+          "subject": "={{ ($json.subject_prefix || '') + 'Invoice \u2014 ' + $json.job_type + ' Service \u2014 ' + $json.customer_name }}",
+          "emailType": "text",
+          "message": "=Dear {{ $json.customer_name }},\n\nThank you for choosing our {{ $json.job_type.toLowerCase() }} services. Please find your invoice details below.\n\n{{ $json.invoice_text }}\n\nPayment due within 30 days. For questions, contact us at (212) 555-0100.\n\nBest regards,\n{{ $json.technician_name }}",
+          "options": {}
+        },
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "r3IbVQkW0d0j3icY",
+            "name": "Gmail account"
+          }
+        }
+      },
+      {
+        "id": "log-job-csv",
+        "name": "Log Job to CSV",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4,
+        "position": [
+          1320,
+          300
+        ],
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "1i-kSUmO0jCOZ1pJyNUV_NITseZTWzWoxR0maN1MDeaU",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "Sheet1",
+            "mode": "name"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Date": "={{ $('Build Invoice Summary').item.json.completion_date }}",
+              "Job ID": "={{ $('Build Invoice Summary').item.json.job_id }}",
+              "Customer Name": "={{ $('Build Invoice Summary').item.json.customer_name }}",
+              "Customer Email": "={{ $('Build Invoice Summary').item.json.customer_email }}",
+              "Job Type": "={{ $('Build Invoice Summary').item.json.job_type }}",
+              "Technician": "={{ $('Build Invoice Summary').item.json.technician_name }}",
+              "Address": "={{ $('Build Invoice Summary').item.json.address }}",
+              "Total ($)": "={{ $('Build Invoice Summary').item.json.job_total }}",
+              "Emergency": "={{ $('Build Invoice Summary').item.json.is_emergency ? 'Y' : 'N' }}",
+              "Invoice Sent": "=Y",
+              "Status": "=Complete"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "Date",
+                "displayName": "Date",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Job ID",
+                "displayName": "Job ID",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Customer Name",
+                "displayName": "Customer Name",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Customer Email",
+                "displayName": "Customer Email",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Job Type",
+                "displayName": "Job Type",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Technician",
+                "displayName": "Technician",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Address",
+                "displayName": "Address",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Total ($)",
+                "displayName": "Total ($)",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Emergency",
+                "displayName": "Emergency",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Invoice Sent",
+                "displayName": "Invoice Sent",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "Status",
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "canBeUsedToMatch": true,
+                "display": true,
+                "type": "string",
+                "removed": false
+              }
+            ]
+          },
+          "options": {}
+        },
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "QeZOA9lJuS7gGgES",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "amount": 6,
+          "unit": "seconds"
+        },
+        "id": "wait-node",
+        "name": "Wait 6 Seconds",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          1540,
+          300
+        ]
+      },
+      {
+        "id": "send-review",
+        "name": "Mock Send Review Request",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2,
+        "position": [
+          1760,
+          300
+        ],
+        "parameters": {
+          "operation": "send",
+          "sendTo": "={{ $('Build Invoice Summary').item.json.customer_email }}",
+          "subject": "={{ 'How did we do today, ' + $('Build Invoice Summary').item.json.customer_name + '?' }}",
+          "emailType": "text",
+          "message": "={{ 'Hi ' + $('Build Invoice Summary').item.json.customer_name + ',\\n\\nI just wanted to personally thank you for trusting us with your ' + $('Build Invoice Summary').item.json.job_type.toLowerCase() + ' work today. It was a pleasure taking care of things at ' + $('Build Invoice Summary').item.json.address + '.\\n\\nIf you have a moment, a quick Google review would mean the world to our team \u2014 it helps other homeowners in the area find reliable service:\\n\\nhttps://g.page/r/[YOUR-GOOGLE-REVIEW-LINK]\\n\\nThanks again,\\n' + $('Build Invoice Summary').item.json.technician_name }}",
+          "options": {}
+        },
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "r3IbVQkW0d0j3icY",
+            "name": "Gmail account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "upsell-check",
+                "leftValue": "={{ $json.job_total }}",
+                "rightValue": 500,
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "if-upsell",
+        "name": "Upsell Flag Check",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1980,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, upsell_opportunity: true, upsell_note: 'High-value job - consider maintenance contract upsell' } }];"
+        },
+        "id": "set-upsell-true",
+        "name": "Upsell: Yes",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const d = $input.first().json;\nreturn [{ json: { ...d, upsell_opportunity: false } }];"
+        },
+        "id": "set-upsell-false",
+        "name": "Upsell: No",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2200,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "try {\n  const d = $input.first().json;\n  const actions = ['parse_validate', 'build_invoice', 'emergency_check', 'send_invoice_email', 'log_job_csv', 'wait_cooldown', 'send_review_request', 'upsell_check'];\n  return [{ json: { workflow_status: 'success', timestamp: new Date().toISOString(), job_id: d.job_id, customer_name: d.customer_name, job_type: d.job_type, job_total: d.job_total, priority: d.priority, upsell_opportunity: d.upsell_opportunity || false, upsell_note: d.upsell_note || '', actions_taken: actions, email_subject: d.email_subject, review_subject: d.review_subject, csv_row: d.csv_row } }];\n} catch (err) {\n  throw new Error('Final Status failed: ' + err.message);\n}"
+        },
+        "id": "final-status",
+        "name": "Final Status",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2420,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://hooks.slack.com/services/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",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ text: '\u2705 Job Complete \u2014 ' + $('Build Invoice Summary').item.json.customer_name + ' | ' + $('Build Invoice Summary').item.json.job_type + ' | $' + $('Build Invoice Summary').item.json.job_total.toFixed(2) + ' | Tech: ' + $('Build Invoice Summary').item.json.technician_name + ($('Build Invoice Summary').item.json.is_emergency ? ' | \ud83d\udea8 EMERGENCY' : '') + ($('Build Invoice Summary').item.json.job_total > 500 ? ' | \ud83d\udd25 Upsell Flag' : '') }) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "slack-notify",
+        "name": "Slack Notification",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2640,
+          300
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      },
+      {
+        "parameters": {},
+        "id": "error-trigger",
+        "name": "Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "try {\n  const error = $input.first().json;\n  const execution = error.execution || {};\n  const lastNode = execution.lastNodeExecuted || 'unknown';\n  const errorMsg = execution.error ? execution.error.message : 'Unknown error';\n  let jobId = 'unknown';\n  try {\n    const data = execution.data;\n    if (data && data.resultData && data.resultData.runData) {\n      const webhookData = data.resultData.runData['Webhook: Job Complete'];\n      if (webhookData && webhookData[0] && webhookData[0].data && webhookData[0].data.main && webhookData[0].data.main[0]) {\n        jobId = webhookData[0].data.main[0][0].json.body.job_id || 'unknown';\n      }\n    }\n  } catch(e) {}\n  return [{ json: { error_type: 'workflow_failure', failed_node: lastNode, error_message: errorMsg, job_id: jobId, timestamp: new Date().toISOString() } }];\n} catch (err) {\n  return [{ json: { error_type: 'error_handler_failure', error_message: err.message, timestamp: new Date().toISOString() } }];\n}"
+        },
+        "id": "set-error-details",
+        "name": "Log Error Details",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          600
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://webhook.site/1582945c-8636-40de-984e-55fa460c20fb",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ type: 'error_alert', channel: '#alerts', text: 'WORKFLOW ERROR - Node: ' + $json.failed_node + ' | Error: ' + $json.error_message + ' | Job: ' + $json.job_id }) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "error-alert",
+        "name": "Error Alert",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          440,
+          600
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 5000
+      }
+    ],
+    "connections": {
+      "Webhook: Job Complete": {
+        "main": [
+          [
+            {
+              "node": "Parse & Validate",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse & Validate": {
+        "main": [
+          [
+            {
+              "node": "Build Invoice Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Invoice Summary": {
+        "main": [
+          [
+            {
+              "node": "Is Emergency?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is Emergency?": {
+        "main": [
+          [
+            {
+              "node": "Set Emergency Prefix",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Set Standard Prefix",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set Emergency Prefix": {
+        "main": [
+          [
+            {
+              "node": "Mock Send Invoice Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Set Standard Prefix": {
+        "main": [
+          [
+            {
+              "node": "Mock Send Invoice Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mock Send Invoice Email": {
+        "main": [
+          [
+            {
+              "node": "Log Job to CSV",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Job to CSV": {
+        "main": [
+          [
+            {
+              "node": "Wait 6 Seconds",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait 6 Seconds": {
+        "main": [
+          [
+            {
+              "node": "Mock Send Review Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mock Send Review Request": {
+        "main": [
+          [
+            {
+              "node": "Upsell Flag Check",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Upsell Flag Check": {
+        "main": [
+          [
+            {
+              "node": "Upsell: Yes",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Upsell: No",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Upsell: Yes": {
+        "main": [
+          [
+            {
+              "node": "Final Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Upsell: No": {
+        "main": [
+          [
+            {
+              "node": "Final Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Final Status": {
+        "main": [
+          [
+            {
+              "node": "Slack Notification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "Log Error Details",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Error Details": {
+        "main": [
+          [
+            {
+              "node": "Error Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "JT Somwaru",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-04T19:28:15.112Z",
+        "id": 46,
+        "workflowId": "Hd0eJo1uRKb1JJHy",
+        "versionId": "d663734f-4a68-4abb-87a4-bf8ae67e95ab",
+        "event": "activated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      },
+      {
+        "createdAt": "2026-03-04T19:28:15.108Z",
+        "id": 45,
+        "workflowId": "Hd0eJo1uRKb1JJHy",
+        "versionId": "d663734f-4a68-4abb-87a4-bf8ae67e95ab",
+        "event": "deactivated",
+        "userId": "3dfc39da-972c-4655-9f9e-e62d015405d9"
+      }
+    ]
+  }
+}
