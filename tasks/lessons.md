@@ -143,3 +143,9 @@
 [glow-index/supabase-migration]: Prisma 7 requires a driver adapter even for standard PostgreSQL — `new PrismaClient()` alone throws "needs non-empty PrismaClientOptions". Use `@prisma/adapter-pg` with a `pg.Pool`: `const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL }); const adapter = new PrismaPg(pool); new PrismaClient({ adapter })`.
 
 [glow-index/supabase-migration]: When switching from SQLite to PostgreSQL in Prisma 7, remove `@prisma/adapter-better-sqlite3` import and install `@prisma/adapter-pg` + `pg` + `@types/pg`. Update lib/db.ts, seed script, and any other direct PrismaClient instantiation.
+
+[georgetown/city-services-agent]: When replacing a node type via API (e.g. HTTP Request → Gmail), the connections object uses node **names** not node IDs. If you rename the node, update both the connection key AND any edge `"node"` values pointing to it — otherwise the workflow silently loses its connections and fails to activate.
+
+[georgetown/city-services-agent]: When swapping a node type via PUT /workflows/{id}, match the `typeVersion` exactly to another working node of the same type already in the workflow. Mismatched typeVersion (e.g. 2.1 vs 2.2 for Gmail) causes "could not be started" activation errors with no clear error message.
+
+[georgetown/city-services-agent]: When updating a Code node's output fields, audit ALL downstream nodes that reference those fields before saving. Removing a field (e.g. `citizen_email`) breaks every node that references it, even nodes not directly connected to the Code node.
