@@ -1,7 +1,5 @@
 {
-  "id": "w0yOfDL4RTLldwSJ",
   "name": "Nash Satoshi Token Analysis",
-  "active": false,
   "nodes": [
     {
       "id": "wh1",
@@ -145,102 +143,12 @@
       }
     },
     {
-      "id": "bfp1",
-      "name": "Build Fundamentals Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1100,
-        100
-      ],
-      "parameters": {
-        "jsCode": "// Build fundamentals research prompt\nconst d = $input.all()[0].json;\nconst prompt = `You are a crypto research analyst. Analyze this token:\\n- Ticker: ${d.ticker}\\n- Name: ${d.name}\\n- Chain: ${d.chain}\\n- Contract: ${d.contract_address}\\n- Price: $${d.price}\\n- Market Cap: $${d.market_cap}\\n- FDV: $${d.fdv}\\n- 24h Volume: $${d.volume_24h}\\n\\nCover: Narrative Positioning, Project Fundamentals, Team & Backers, Value Capture, Traction & Usage, Tokenomics & Unlocks, Roadmap & Catalysts, Competitive Analysis.\\nBe specific and data-driven.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];"
-      }
-    },
-    {
-      "id": "fr1",
-      "name": "Fundamentals Research",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1320,
-        100
-      ],
-      "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json.requestBody }}",
-        "options": {
-          "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 5000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "bsp1",
-      "name": "Build Social Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1100,
-        500
-      ],
-      "parameters": {
-        "jsCode": "// Build social research prompt\nconst d = $input.all()[0].json;\nconst prompt = `You are a crypto social intelligence analyst. Analyze social signals for:\\n- Ticker: ${d.ticker}\\n- Name: ${d.name}\\n- Chain: ${d.chain}\\n- Price: $${d.price}\\n- Market Cap: $${d.market_cap}\\n\\nCover: Attention Metrics, Account Analysis, KOL Signals, Sentiment Analysis, Community Coordination, Divergence Check, Narrative Heat.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 3000 } } }];"
-      }
-    },
-    {
-      "id": "sr1",
-      "name": "Social Research",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1320,
-        500
-      ],
-      "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json.requestBody }}",
-        "options": {
-          "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 5000,
-      "onError": "continueRegularOutput"
-    },
-    {
       "id": "mr1",
       "name": "Merge Research",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        1540,
+        1980,
         300
       ],
       "parameters": {
@@ -254,7 +162,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1760,
+        2200,
         300
       ],
       "parameters": {
@@ -267,7 +175,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1980,
+        2420,
         300
       ],
       "parameters": {
@@ -280,7 +188,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
+        2640,
         -50
       ],
       "parameters": {
@@ -312,7 +220,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
+        2640,
         200
       ],
       "parameters": {
@@ -344,7 +252,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
+        2640,
         450
       ],
       "parameters": {
@@ -376,7 +284,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
+        2640,
         700
       ],
       "parameters": {
@@ -408,7 +316,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        2420,
+        2860,
         300
       ],
       "parameters": {
@@ -422,7 +330,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
+        3080,
         300
       ],
       "parameters": {
@@ -435,7 +343,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2860,
+        3300,
         -50
       ],
       "parameters": {
@@ -467,7 +375,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2860,
+        3300,
         200
       ],
       "parameters": {
@@ -499,7 +407,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2860,
+        3300,
         450
       ],
       "parameters": {
@@ -531,7 +439,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2860,
+        3300,
         700
       ],
       "parameters": {
@@ -563,7 +471,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        3080,
+        3520,
         300
       ],
       "parameters": {
@@ -577,7 +485,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3300,
+        3740,
         300
       ],
       "parameters": {
@@ -590,7 +498,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3520,
+        3960,
         300
       ],
       "parameters": {
@@ -622,7 +530,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3740,
+        4180,
         300
       ],
       "parameters": {
@@ -635,7 +543,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3960,
+        4400,
         300
       ],
       "parameters": {
@@ -719,6 +627,251 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 5000
+    },
+    {
+      "id": "bf1",
+      "name": "Brave Fundamentals 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -50
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent($json.ticker + ' ' + $json.name + ' tokenomics team backers') + '&count=5' }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Subscription-Token",
+              "value": "={{ $env.BRAVE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bf2",
+      "name": "Brave Fundamentals 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        150
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent($json.ticker + ' crypto roadmap catalysts 2026') + '&count=5' }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Subscription-Token",
+              "value": "={{ $env.BRAVE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "wfm1",
+      "name": "Wait Fund Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1320,
+        50
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "mf1",
+      "name": "Merge Fundamentals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        50
+      ],
+      "parameters": {
+        "jsCode": "// Combine Brave search results and build fundamentals synthesis prompt\nconst items = $input.all();\nlet tokenData = null;\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\n\n// Extract Brave web results from both searches\nlet results1 = [], results2 = [];\ntry {\n  const r1 = items[0].json;\n  results1 = r1.web && r1.web.results ? r1.web.results : [];\n} catch(e) {}\ntry {\n  const r2 = items[1].json;\n  results2 = r2.web && r2.web.results ? r2.web.results : [];\n} catch(e) {}\n\nconst allResults = [...results1, ...results2];\nconst searchContext = allResults.map((r, i) => `[${i+1}] ${r.title}\\n${r.description}\\nURL: ${r.url}`).join('\\n\\n');\n\nconst d = tokenData;\nconst prompt = `You are a crypto research analyst. Analyze this token using the REAL search results provided below.\n\n- Ticker: ${d.ticker}\n- Name: ${d.name}\n- Chain: ${d.chain}\n- Contract: ${d.contract_address}\n- Price: $${d.price}\n- Market Cap: $${d.market_cap}\n- FDV: $${d.fdv}\n- 24h Volume: $${d.volume_24h}\n\nREAL WEB SEARCH RESULTS:\n${searchContext}\n\nUsing ONLY the search results above and the token data provided, cover:\n1. Narrative Positioning\n2. Project Fundamentals\n3. Team & Backers\n4. Value Capture\n5. Traction & Usage\n6. Tokenomics & Unlocks\n7. Roadmap & Catalysts\n8. Competitive Analysis\n\nBe specific and data-driven. Cite sources from the search results. If information is not available in the search results, explicitly state \"Not found in search results\" rather than speculating.`;\n\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];"
+      }
+    },
+    {
+      "id": "fs1",
+      "name": "Fundamentals Synthesis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        50
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "lcs1",
+      "name": "LunarCrush Social",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        450
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://lunarcrush.com/api4/public/coins/' + $json.ticker.toLowerCase() + '/v1' }}",
+        "authentication": "none",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "brs1",
+      "name": "Brave Social",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        650
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent($json.ticker + ' crypto community sentiment 2026') + '&count=5' }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Subscription-Token",
+              "value": "={{ $env.BRAVE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "wsm1",
+      "name": "Wait Social Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1320,
+        550
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "msoc1",
+      "name": "Merge Social",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        550
+      ],
+      "parameters": {
+        "jsCode": "// Combine LunarCrush metrics and Brave social search results, build synthesis prompt\nconst items = $input.all();\nlet tokenData = null;\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\n\n// LunarCrush data (input 0)\nlet lunarContext = 'LunarCrush data unavailable';\ntry {\n  const lc = items[0].json;\n  if (lc && !lc.error) {\n    const metrics = [];\n    if (lc.galaxy_score !== undefined) metrics.push('Galaxy Score: ' + lc.galaxy_score);\n    if (lc.alt_rank !== undefined) metrics.push('Alt Rank: ' + lc.alt_rank);\n    if (lc.social_dominance !== undefined) metrics.push('Social Dominance: ' + lc.social_dominance);\n    if (lc.social_volume !== undefined) metrics.push('Social Volume: ' + lc.social_volume);\n    if (lc.social_score !== undefined) metrics.push('Social Score: ' + lc.social_score);\n    if (lc.sentiment !== undefined) metrics.push('Sentiment: ' + lc.sentiment);\n    if (lc.interactions_24h !== undefined) metrics.push('Interactions 24h: ' + lc.interactions_24h);\n    if (lc.social_contributors !== undefined) metrics.push('Social Contributors: ' + lc.social_contributors);\n    if (metrics.length > 0) lunarContext = metrics.join('\\n');\n  }\n} catch(e) { lunarContext = 'LunarCrush data unavailable: ' + e.message; }\n\n// Brave social search results (input 1)\nlet braveResults = [];\ntry {\n  const br = items[1].json;\n  braveResults = br.web && br.web.results ? br.web.results : [];\n} catch(e) {}\nconst searchContext = braveResults.map((r, i) => `[${i+1}] ${r.title}\\n${r.description}\\nURL: ${r.url}`).join('\\n\\n');\n\nconst d = tokenData;\nconst prompt = `You are a crypto social intelligence analyst. Analyze social signals for this token using the REAL data provided below.\n\n- Ticker: ${d.ticker}\n- Name: ${d.name}\n- Chain: ${d.chain}\n- Price: $${d.price}\n- Market Cap: $${d.market_cap}\n\nLUNARCRUSH METRICS:\n${lunarContext}\n\nSOCIAL WEB SEARCH RESULTS:\n${searchContext}\n\nUsing ONLY the data above, cover:\n1. Attention Metrics (social volume, dominance, galaxy score)\n2. KOL Signals\n3. Sentiment Analysis\n4. Community Coordination\n5. Narrative Heat\n\nBe specific and data-driven. Cite sources. If information is not available, explicitly state so rather than speculating.`;\n\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 3000 } } }];"
+      }
+    },
+    {
+      "id": "ss1",
+      "name": "Social Synthesis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        550
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -777,12 +930,22 @@
       "main": [
         [
           {
-            "node": "Build Fundamentals Prompt",
+            "node": "Brave Fundamentals 1",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Build Social Prompt",
+            "node": "Brave Fundamentals 2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LunarCrush Social",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Brave Social",
             "type": "main",
             "index": 0
           }
@@ -804,58 +967,24 @@
       "main": [
         [
           {
-            "node": "Build Fundamentals Prompt",
+            "node": "Brave Fundamentals 1",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Build Social Prompt",
+            "node": "Brave Fundamentals 2",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Fundamentals Prompt": {
-      "main": [
-        [
+          },
           {
-            "node": "Fundamentals Research",
+            "node": "LunarCrush Social",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Fundamentals Research": {
-      "main": [
-        [
+          },
           {
-            "node": "Merge Research",
+            "node": "Brave Social",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Social Prompt": {
-      "main": [
-        [
-          {
-            "node": "Social Research",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Social Research": {
-      "main": [
-        [
-          {
-            "node": "Merge Research",
-            "type": "main",
-            "index": 1
           }
         ]
       ]
@@ -1098,10 +1227,121 @@
           }
         ]
       ]
+    },
+    "Brave Fundamentals 1": {
+      "main": [
+        [
+          {
+            "node": "Wait Fund Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Brave Fundamentals 2": {
+      "main": [
+        [
+          {
+            "node": "Wait Fund Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait Fund Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge Fundamentals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Fundamentals": {
+      "main": [
+        [
+          {
+            "node": "Fundamentals Synthesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fundamentals Synthesis": {
+      "main": [
+        [
+          {
+            "node": "Merge Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LunarCrush Social": {
+      "main": [
+        [
+          {
+            "node": "Wait Social Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Brave Social": {
+      "main": [
+        [
+          {
+            "node": "Wait Social Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Wait Social Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge Social",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Social": {
+      "main": [
+        [
+          {
+            "node": "Social Synthesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Social Synthesis": {
+      "main": [
+        [
+          {
+            "node": "Merge Research",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner"
-  }
+  },
+  "id": "8wMgbteATCO60Hl7"
 }
