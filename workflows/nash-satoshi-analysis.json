@@ -27,64 +27,60 @@
       }
     },
     {
-      "id": "ei1",
-      "name": "Extract Input",
+      "id": "pw1",
+      "name": "Parse Webhook",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        220,
+        250,
         300
       ],
       "parameters": {
-        "jsCode": "// Extract and validate webhook input\nconst items = $input.all();\nconst body = items[0].json.body || items[0].json;\nconst source = (body.source || 'coingecko').toLowerCase().trim();\nconst contract_address = (body.contract_address || '').trim();\nconst chain = (body.chain || 'ethereum').toLowerCase().trim();\nconst run_id = (body.run_id || '').trim();\nif (!contract_address) { throw new Error('Missing required field: contract_address'); }\nreturn [{ json: { source, contract_address, chain, run_id, analysis_date: new Date().toISOString() } }];"
+        "jsCode": "// Extract and validate webhook input\nconst items = $input.all();\nconst body = items[0].json.body || items[0].json;\nconst contract_address = (body.contract_address || \"\").trim();\nif (!contract_address) { throw new Error(\"Missing required field: contract_address\"); }\nreturn [{ json: {\n  ticker: (body.ticker || \"\").trim(),\n  name: (body.name || \"\").trim(),\n  chain: (body.chain || \"ethereum\").toLowerCase().trim(),\n  contract_address: contract_address,\n  price: body.price || 0,\n  market_cap: body.market_cap || 0,\n  fdv: body.fdv || 0,\n  volume_24h: body.volume_24h || 0,\n  run_id: (body.run_id || \"\").trim(),\n  homepage_url: (body.homepage_url || \"\").trim(),\n  analysis_date: new Date().toISOString()\n} }];"
       }
     },
     {
-      "id": "sc1",
-      "name": "Source Check",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
+      "id": "bsu1",
+      "name": "Build Scrape URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        440,
-        300
+        500,
+        200
       ],
       "parameters": {
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": false,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
+        "jsCode": "// Build 4 scrape URLs for Firecrawl\nconst d = $(\"Parse Webhook\").item.json;\nconst ticker = d.ticker;\nconst contract = d.contract_address;\nconst chain = (d.chain || \"\").toLowerCase();\nconst name = (d.name || \"\").toLowerCase().replace(/[^a-z0-9]/g, \"\");\nconst explorerUrl = (chain === \"base\" || chain === \"ethereum\" || chain === \"eth\")\n  ? \"https://etherscan.io/token/\" + contract\n  : \"https://solscan.io/token/\" + contract;\nconst homepage = d.homepage_url && d.homepage_url.length > 5\n  ? d.homepage_url\n  : \"https://\" + name + \".io\";\nreturn [\n  { json: { url: \"https://www.coingecko.com/en/coins/\" + ticker.toLowerCase(), label: \"coingecko\" } },\n  { json: { url: explorerUrl, label: \"explorer\" } },\n  { json: { url: \"https://dexscreener.com/search?q=\" + contract, label: \"dexscreener\" } },\n  { json: { url: homepage, label: \"homepage\" } }\n];"
+      }
+    },
+    {
+      "id": "fcs1",
+      "name": "Firecrawl Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v1/scrape",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
             {
-              "id": "cond-src",
-              "leftValue": "={{ $json.source }}",
-              "rightValue": "dexscreener",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
+              "name": "Authorization",
+              "value": "Bearer fc-0d0961fa920a466a869fdd4068b9fe7e"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
-        }
-      },
-      "onError": "continueErrorOutput"
-    },
-    {
-      "id": "cgf1",
-      "name": "CoinGecko Fetch",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        660,
-        100
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://api.coingecko.com/api/v3/coins/' + $json.chain + '/contract/' + $json.contract_address }}",
-        "authentication": "none",
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, formats: [\"markdown\"] }) }}",
         "options": {
           "timeout": 30000
         }
@@ -95,33 +91,227 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "pcg1",
-      "name": "Parse CoinGecko",
+      "id": "al1",
+      "name": "Attach Label",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        100
+        1000,
+        200
       ],
       "parameters": {
-        "jsCode": "// Parse CoinGecko response\nconst input = $('Extract Input').item.json;\nconst d = $input.all()[0].json;\ntry {\n  const ticker = (d.symbol || '').toUpperCase();\n  const name = d.name || '';\n  const website = (d.links && d.links.homepage && d.links.homepage[0]) || '';\n  const md = d.market_data || {};\n  return [{ json: { ...input, ticker, name, website, categories: (d.categories || []).join(', '), market_cap: md.market_cap ? (md.market_cap.usd || 0) : 0, fdv: md.fully_diluted_valuation ? (md.fully_diluted_valuation.usd || 0) : 0, volume_24h: md.total_volume ? (md.total_volume.usd || 0) : 0, price: md.current_price ? (md.current_price.usd || 0) : 0, price_change_24h: md.price_change_percentage_24h || 0, price_change_7d: md.price_change_percentage_7d || 0, dex_liquidity_usd: 0, dex_buys_24h: 0, dex_sells_24h: 0, dex_liquidity_pct: 0, data_source: 'coingecko' } }];\n} catch (e) { return [{ json: { ...input, ticker: '', name: '', parse_error: e.message, data_source: 'coingecko', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }]; }"
+        "jsCode": "// Pair Firecrawl results back with their labels by index\nconst scraped = $input.all();\nconst urlItems = $(\"Build Scrape URLs\").all();\nreturn scraped.map((item, i) => ({\n  json: {\n    label: urlItems[i] ? urlItems[i].json.label : \"unknown\",\n    markdown: item.json.data ? item.json.data.markdown : (item.json.markdown || \"\")\n  }\n}));"
       }
     },
     {
-      "id": "dxf1",
-      "name": "DexScreener Fetch",
+      "id": "bt1",
+      "name": "Brave Team",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        660,
-        500
+        500,
+        -200
       ],
       "parameters": {
         "method": "GET",
-        "url": "={{ 'https://api.dexscreener.com/latest/dex/tokens/' + $json.contract_address }}",
+        "url": "https://api.search.brave.com/res/v1/web/search",
         "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Subscription-Token",
+              "value": "={{ $env.BRAVE_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $(\"Parse Webhook\").item.json.ticker + \" \" + $(\"Parse Webhook\").item.json.name + \" team founder developer\" }}"
+            },
+            {
+              "name": "count",
+              "value": "5"
+            }
+          ]
+        },
         "options": {
-          "timeout": 30000
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bfk1",
+      "name": "Brave Fake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        -400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.search.brave.com/res/v1/web/search",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Subscription-Token",
+              "value": "={{ $env.BRAVE_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $(\"Parse Webhook\").item.json.ticker + \" \" + $(\"Parse Webhook\").item.json.name + \" fake token scam imposter contract\" }}"
+            },
+            {
+              "name": "count",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bct1",
+      "name": "Brave Catalysts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.search.brave.com/res/v1/web/search",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Subscription-Token",
+              "value": "={{ $env.BRAVE_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $(\"Parse Webhook\").item.json.ticker + \" roadmap milestones catalysts 2026\" }}"
+            },
+            {
+              "name": "count",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "wfs1",
+      "name": "Wait Fund Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1250,
+        0
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "mf1",
+      "name": "Merge Fundamentals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Combine 4 Firecrawl + 3 Brave results and build Anthropic synthesis request\nconst allItems = $input.all();\nconst d = $(\"Parse Webhook\").first().json;\nlet ctx = \"\";\n// Items arrive: 4 firecrawl (with label field), then 3 brave (with web field)\nfor (const item of allItems) {\n  if (item.json.label) {\n    const label = item.json.label.toUpperCase();\n    const md = (item.json.markdown || \"\").substring(0, 2000);\n    ctx += \"\\n=== \" + label + \" ===\\n\" + md + \"\\n\";\n  } else if (item.json.web) {\n    const results = (item.json.web.results || []).slice(0, 5);\n    const section = results.map(r => r.title + \": \" + r.description).join(\"\\n\");\n    ctx += \"\\n=== BRAVE SEARCH ===\\n\" + section + \"\\n\";\n  }\n}\nconst prompt = \"You are analyzing a crypto token for investment scoring. Use ONLY the research data provided. Do not hallucinate.\\n\\n\"\n  + \"TOKEN: \" + d.ticker + \" / \" + d.name + \"\\n\"\n  + \"CHAIN: \" + d.chain + \"\\n\"\n  + \"CONTRACT: \" + d.contract_address + \"\\n\"\n  + \"PRICE: \" + d.price + \"\\n\"\n  + \"MARKET CAP: \" + d.market_cap + \"\\n\"\n  + \"FDV: \" + d.fdv + \"\\n\\n\"\n  + \"RESEARCH DATA:\\n\" + ctx + \"\\n\\n\"\n  + \"Produce structured analysis:\\n\"\n  + \"- Narrative Positioning & Market Thesis\\n\"\n  + \"- Project Fundamentals (product, tech stack, stage)\\n\"\n  + \"- Team & Backers (names, credibility)\\n\"\n  + \"- Value Capture (token utility, fees, revenue model)\\n\"\n  + \"- Traction & Usage (holders, volume, TVL)\\n\"\n  + \"- Tokenomics & Unlocks (supply, vesting, whales)\\n\"\n  + \"- Roadmap & Catalysts (upcoming milestones)\\n\"\n  + \"- Competitive Analysis (comparable tokens)\\n\"\n  + \"- WARNING: Fake Token Alert (flag any imposter contracts found)\\n\"\n  + \"- Key Links\\n\"\n  + \"Include Confidence (High/Medium/Low) per section.\";\nreturn [{ json: { requestBody: { model: \"claude-sonnet-4-6\", messages: [{ role: \"user\", content: prompt }], max_tokens: 3000 } } }];"
+      }
+    },
+    {
+      "id": "fs1",
+      "name": "Fundamentals Synthesis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1750,
+        0
+      ],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
         }
       },
       "retryOnFail": true,
@@ -130,17 +320,86 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "pdx1",
-      "name": "Parse DexScreener",
+      "id": "bxq1",
+      "name": "Build X Queries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
-        500
+        500,
+        700
       ],
       "parameters": {
-        "jsCode": "// Parse DexScreener response\nconst input = $('Extract Input').item.json;\nconst d = $input.all()[0].json;\ntry {\n  const pairs = d.pairs || [];\n  const chain = input.chain;\n  const filtered = pairs.filter(p => (p.chainId || '').toLowerCase().includes(chain) && (p.volume ? p.volume.h24 : 0) > 1000);\n  const best = filtered.sort((a, b) => ((b.volume ? b.volume.h24 : 0) || 0) - ((a.volume ? a.volume.h24 : 0) || 0))[0] || pairs[0];\n  if (!best) return [{ json: { ...input, ticker: '', name: '', parse_error: 'No pairs', data_source: 'dexscreener', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }];\n  const bt = best.baseToken || {};\n  const liq = best.liquidity ? (best.liquidity.usd || 0) : 0;\n  const mc = best.marketCap || 0;\n  return [{ json: { ...input, ticker: (bt.symbol || '').toUpperCase(), name: bt.name || '', website: '', categories: '', market_cap: mc, fdv: best.fdv || 0, volume_24h: best.volume ? (best.volume.h24 || 0) : 0, price: parseFloat(best.priceUsd || '0'), price_change_24h: best.priceChange ? (best.priceChange.h24 || 0) : 0, price_change_7d: 0, dex_liquidity_usd: liq, dex_buys_24h: best.txns && best.txns.h24 ? best.txns.h24.buys || 0 : 0, dex_sells_24h: best.txns && best.txns.h24 ? best.txns.h24.sells || 0 : 0, dex_liquidity_pct: mc > 0 ? (liq / mc * 100) : 0, data_source: 'dexscreener' } }];\n} catch (e) { return [{ json: { ...input, ticker: '', name: '', parse_error: e.message, data_source: 'dexscreener', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }]; }"
+        "jsCode": "// Build 5 X search queries from token data\nconst d = $(\"Parse Webhook\").item.json;\nconst ticker = d.ticker.replace(/[^a-zA-Z0-9]/g, \"\");\nconst name = d.name.replace(/[^a-zA-Z0-9 ]/g, \"\").trim();\nreturn [\n  { json: { query: ticker + \" crypto\", label: \"general\" } },\n  { json: { query: \"$\" + ticker, label: \"dollar\" } },\n  { json: { query: name + \" token\", label: \"project\" } },\n  { json: { query: ticker + \" bullish bearish aping sold\", label: \"sentiment\" } },\n  { json: { query: ticker + \" \" + name + \" fake scam imposter\", label: \"fake\" } }\n];"
       }
+    },
+    {
+      "id": "xs1",
+      "name": "X Search",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        750,
+        700
+      ],
+      "parameters": {
+        "command": "=cd /Users/jtsomwaru/.openclaw/workspace/skills/x-research && source /Users/jtsomwaru/.config/env/global.env && bun run x-search.ts search \"{{ $json.query }}\" --quick --limit 10 2>&1"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ms1",
+      "name": "Merge Social",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        700
+      ],
+      "parameters": {
+        "jsCode": "// Combine 5 X search results with engagement sorting and build synthesis request\nconst items = $input.all();\nconst queryItems = $(\"Build X Queries\").all();\nconst d = $(\"Parse Webhook\").first().json;\nconst allTweets = [];\nconst sections = {};\nfor (let i = 0; i < items.length; i++) {\n  const stdout = items[i].json.stdout || items[i].json.output || \"\";\n  const label = queryItems[i] ? queryItems[i].json.label : \"unknown\";\n  let tweets = [];\n  try {\n    tweets = JSON.parse(stdout);\n  } catch(e) {\n    try {\n      const match = stdout.match(/\\[[\\s\\S]*\\]/);\n      if (match) { tweets = JSON.parse(match[0]); }\n    } catch(e2) {}\n  }\n  if (!Array.isArray(tweets)) tweets = [];\n  sections[label] = tweets;\n  tweets.forEach(t => allTweets.push(Object.assign({}, t, { _label: label })));\n}\n// Sort all tweets by engagement descending\nallTweets.sort((a, b) => {\n  const mA = a.public_metrics || {};\n  const mB = b.public_metrics || {};\n  const engA = (mA.like_count||0) + (mA.retweet_count||0) + (mA.reply_count||0);\n  const engB = (mB.like_count||0) + (mB.retweet_count||0) + (mB.reply_count||0);\n  return engB - engA;\n});\nlet ctx = \"TOP TWEETS BY ENGAGEMENT (KOL signal sorted high to low):\\n\\n\";\nallTweets.slice(0, 20).forEach(t => {\n  const m = t.public_metrics || {};\n  const author = t.author_username || (t.author && t.author.username) || \"unknown\";\n  ctx += \"@\" + author + \" | Likes:\" + (m.like_count||0) + \" RT:\" + (m.retweet_count||0) + \" Replies:\" + (m.reply_count||0) + \"\\n\";\n  ctx += \"\\\"\" + (t.text||\"\").substring(0, 280) + \"\\\"\\n\\n\";\n});\nconst labels = [\"general\",\"dollar\",\"project\",\"sentiment\",\"fake\"];\nfor (const lbl of labels) {\n  const tweets = sections[lbl] || [];\n  ctx += \"\\n--- \" + lbl.toUpperCase() + \" (\" + tweets.length + \" tweets) ---\\n\";\n  tweets.forEach(t => {\n    const author = t.author_username || (t.author && t.author.username) || \"unknown\";\n    ctx += \"@\" + author + \": \" + (t.text||\"\").substring(0, 200) + \"\\n\";\n  });\n}\nconst prompt = \"Analyze social signals for this crypto token. Use ONLY the tweet data provided. Identify KOLs from engagement metrics (high likes/retweets = high reach), NOT from keywords.\\n\\n\"\n  + \"TOKEN: \" + d.ticker + \" / \" + d.name + \"\\n\\n\"\n  + \"TWEET DATA:\\n\" + ctx + \"\\n\\n\"\n  + \"Produce:\\n\"\n  + \"- Discussion Quality (organic vs shills/bots ratio, signal-to-noise %)\\n\"\n  + \"- Top Accounts by Reach (ranked by engagement as influence proxy, include counts)\\n\"\n  + \"- Social Volume (total tweets, dominant direction)\\n\"\n  + \"- Sentiment Breakdown (bullish/bearish/neutral % with evidence)\\n\"\n  + \"- Community Activity & Tone\\n\"\n  + \"- Key Opinion Leaders (high-engagement accounts, stance, specific claims)\\n\"\n  + \"- Narrative & Ecosystem Fit\\n\"\n  + \"- WARNING: Fake Token Alerts (flag tweets mentioning different contracts or scam warnings)\\n\"\n  + \"- Overall Social Health\\n\"\n  + \"Include Confidence (High/Medium/Low) per section.\";\nreturn [{ json: { requestBody: { model: \"claude-sonnet-4-6\", messages: [{ role: \"user\", content: prompt }], max_tokens: 3000 } } }];"
+      }
+    },
+    {
+      "id": "ss1",
+      "name": "Social Synthesis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        700
+      ],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
       "id": "mr1",
@@ -148,7 +407,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        1980,
+        2000,
         300
       ],
       "parameters": {
@@ -162,11 +421,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2200,
+        2250,
         300
       ],
       "parameters": {
-        "jsCode": "// Combine research outputs\nconst items = $input.all();\nlet tokenData = {};\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\nlet fund = '', social = '';\ntry { fund = items[0].json.choices[0].message.content || ''; } catch(e) { fund = 'Unavailable'; }\ntry { social = items[1].json.choices[0].message.content || ''; } catch(e) { social = 'Unavailable'; }\nreturn [{ json: { ...tokenData, fundamentals_research: fund, social_research: social } }];"
+        "jsCode": "// Combine fundamentals + social synthesis outputs\nfunction extractLLM(item) {\n  try { if (item.json.content && Array.isArray(item.json.content)) return item.json.content[0].text; } catch(e) {}\n  try { return item.json.choices[0].message.content; } catch(e) {}\n  return \"Unavailable\";\n}\nconst items = $input.all();\nconst tokenData = $(\"Parse Webhook\").first().json;\nlet fund = \"Unavailable\", social = \"Unavailable\";\ntry { fund = extractLLM(items[0]); } catch(e) {}\ntry { social = extractLLM(items[1]); } catch(e) {}\nreturn [{ json: Object.assign({}, tokenData, { fundamentals_research: fund, social_research: social }) }];"
       }
     },
     {
@@ -175,11 +434,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2420,
+        2500,
         300
       ],
       "parameters": {
-        "jsCode": "// Stage 2: 4-LLM analysis prompt (full Apex Game Theorist prompt with all output fields)\nconst d = $input.all()[0].json;\nconst prompt = `You are the Apex Crypto Game Theorist...\\n\\nTOKEN: ${d.ticker} (${d.name})\\nChain: ${d.chain}, Price: $${d.price}, MCap: $${d.market_cap}, FDV: $${d.fdv}\\nVolume 24h: $${d.volume_24h}, DEX Liq: $${d.dex_liquidity_usd}\\n\\nFUNDAMENTALS:\\n${d.fundamentals_research}\\n\\nSOCIAL:\\n${d.social_research}\\n\\nOutput ALL fields in key: value format (one per line, no markdown).`;\nconst models = { gpt: 'openai/gpt-5', gemini: 'google/gemini-3.1-pro-preview', claude: 'anthropic/claude-sonnet-4-6', grok: 'x-ai/grok-4' };\nconst mk = (m) => ({ model: m, messages: [{ role: 'user', content: prompt }], max_tokens: 4000 });\nreturn [{ json: { gptBody: mk(models.gpt), geminiBody: mk(models.gemini), claudeBody: mk(models.claude), grokBody: mk(models.grok) } }];"
+        "jsCode": "// Stage 2: 4-LLM analysis prompt (Apex Game Theorist)\nconst d = $input.all()[0].json;\nconst prompt = \"You are the Apex Crypto Game Theorist...\\n\\n\"\n  + \"TOKEN: \" + d.ticker + \" (\" + d.name + \")\\n\"\n  + \"Chain: \" + d.chain + \", Price: $\" + d.price + \", MCap: $\" + d.market_cap + \", FDV: $\" + d.fdv + \"\\n\"\n  + \"Volume 24h: $\" + d.volume_24h + \"\\n\\n\"\n  + \"FUNDAMENTALS:\\n\" + d.fundamentals_research + \"\\n\\n\"\n  + \"SOCIAL:\\n\" + d.social_research + \"\\n\\n\"\n  + \"Output ALL fields in key: value format (one per line, no markdown).\";\nconst mk = (m) => ({ model: m, messages: [{ role: \"user\", content: prompt }], max_tokens: 4000 });\nreturn [{ json: {\n  gptBody: mk(\"openai/gpt-5\"),\n  geminiBody: mk(\"google/gemini-3.1-pro-preview\"),\n  claudeBody: mk(\"claude-sonnet-4-6\"),\n  grokBody: mk(\"x-ai/grok-4\")\n} }];"
       }
     },
     {
@@ -188,7 +447,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2640,
+        2750,
         -50
       ],
       "parameters": {
@@ -220,7 +479,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2640,
+        2750,
         200
       ],
       "parameters": {
@@ -252,25 +511,35 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2640,
+        2750,
         450
       ],
       "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "url": "https://api.anthropic.com/v1/messages",
         "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $('Build Stage2 Bodies').item.json.claudeBody }}",
         "options": {
           "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
         }
       },
       "retryOnFail": true,
@@ -284,7 +553,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2640,
+        2750,
         700
       ],
       "parameters": {
@@ -316,7 +585,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        2860,
+        3000,
         300
       ],
       "parameters": {
@@ -330,11 +599,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3080,
+        3250,
         300
       ],
       "parameters": {
-        "jsCode": "// Stage 3: Deliberation - each model reviews own + 3 others\nconst items = $input.all();\nconst names = ['GPT', 'Gemini', 'Claude', 'Grok'];\nconst ids = ['openai/gpt-5', 'google/gemini-3.1-pro-preview', 'anthropic/claude-sonnet-4-6', 'x-ai/grok-4'];\nconst s2 = [];\nfor (let i = 0; i < 4; i++) { try { s2.push(items[i].json.choices[0].message.content); } catch(e) { s2.push('Unavailable'); } }\nlet ticker = '';\ntry { ticker = $('Parse CoinGecko').first().json.ticker; } catch(e) {}\nif (!ticker) try { ticker = $('Parse DexScreener').first().json.ticker; } catch(e) {}\nconst bp = (mi) => { const others = [0,1,2,3].filter(i => i !== mi).map(i => `--- ${names[i]} ---\\n${s2[i]}`).join('\\n'); return `Review your ${ticker} analysis vs 3 others.\\nYOURS:\\n${s2[mi]}\\nOTHERS:\\n${others}\\nRevise if evidence warrants. Output key: value format.`; };\nreturn [{ json: { gptBody: { model: ids[0], messages: [{ role: 'user', content: bp(0) }], max_tokens: 4000 }, geminiBody: { model: ids[1], messages: [{ role: 'user', content: bp(1) }], max_tokens: 4000 }, claudeBody: { model: ids[2], messages: [{ role: 'user', content: bp(2) }], max_tokens: 4000 }, grokBody: { model: ids[3], messages: [{ role: 'user', content: bp(3) }], max_tokens: 4000 } } }];"
+        "jsCode": "// Stage 3: Deliberation - each model reviews own + 3 others\nfunction extractLLM(item) {\n  try { if (item.json.content && Array.isArray(item.json.content)) return item.json.content[0].text; } catch(e) {}\n  try { return item.json.choices[0].message.content; } catch(e) {}\n  return \"Unavailable\";\n}\nconst items = $input.all();\nconst names = [\"GPT\", \"Gemini\", \"Claude\", \"Grok\"];\nconst ids = [\"openai/gpt-5\", \"google/gemini-3.1-pro-preview\", \"claude-sonnet-4-6\", \"x-ai/grok-4\"];\nconst s2 = [];\nfor (let i = 0; i < 4; i++) {\n  try { s2.push(extractLLM(items[i])); } catch(e) { s2.push(\"Unavailable\"); }\n}\nconst ticker = $(\"Parse Webhook\").first().json.ticker || \"\";\nconst bp = (mi) => {\n  const others = [0,1,2,3].filter(i => i !== mi).map(i => \"--- \" + names[i] + \" ---\\n\" + s2[i]).join(\"\\n\");\n  return \"Review your \" + ticker + \" analysis vs 3 others.\\nYOURS:\\n\" + s2[mi] + \"\\nOTHERS:\\n\" + others + \"\\nRevise if evidence warrants. Output key: value format.\";\n};\nreturn [{ json: {\n  gptBody: { model: ids[0], messages: [{ role: \"user\", content: bp(0) }], max_tokens: 4000 },\n  geminiBody: { model: ids[1], messages: [{ role: \"user\", content: bp(1) }], max_tokens: 4000 },\n  claudeBody: { model: ids[2], messages: [{ role: \"user\", content: bp(2) }], max_tokens: 4000 },\n  grokBody: { model: ids[3], messages: [{ role: \"user\", content: bp(3) }], max_tokens: 4000 }\n} }];"
       }
     },
     {
@@ -343,7 +612,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
+        3500,
         -50
       ],
       "parameters": {
@@ -375,7 +644,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
+        3500,
         200
       ],
       "parameters": {
@@ -407,25 +676,35 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
+        3500,
         450
       ],
       "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "url": "https://api.anthropic.com/v1/messages",
         "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $('Build Stage3 Bodies').item.json.claudeBody }}",
         "options": {
           "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
         }
       },
       "retryOnFail": true,
@@ -439,7 +718,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3300,
+        3500,
         700
       ],
       "parameters": {
@@ -471,7 +750,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [
-        3520,
+        3750,
         300
       ],
       "parameters": {
@@ -485,11 +764,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3740,
+        4000,
         300
       ],
       "parameters": {
-        "jsCode": "// Stage 4: Consensus aggregation\nconst items = $input.all();\nconst s3 = [];\nfor (let i = 0; i < 4; i++) { try { s3.push(items[i].json.choices[0].message.content); } catch(e) { s3.push('Unavailable'); } }\nlet td = {};\ntry { td = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!td || !td.ticker) try { td = $('Parse DexScreener').first().json; } catch(e) {}\nconst prompt = `Final Consensus Aggregator for ${td.ticker || 'token'}.\\nPrice: $${td.price}, MCap: $${td.market_cap}, FDV: $${td.fdv}\\n\\n--- GPT ---\\n${s3[0]}\\n--- Gemini ---\\n${s3[1]}\\n--- Claude ---\\n${s3[2]}\\n--- Grok ---\\n${s3[3]}\\n\\nAggregate: median scores, majority vote categories, synthesize thesis/catalysts/risks.\\nConsensus spread: <=10 HIGH, <=25 MIXED, <=40 LOW, >40 CONFLICTED.\\nOutput key: value format. Include gpt_score, gemini_score, claude_score, grok_score.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-opus-4.6', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];"
+        "jsCode": "// Stage 4: Consensus aggregation via Opus\nfunction extractLLM(item) {\n  try { if (item.json.content && Array.isArray(item.json.content)) return item.json.content[0].text; } catch(e) {}\n  try { return item.json.choices[0].message.content; } catch(e) {}\n  return \"Unavailable\";\n}\nconst items = $input.all();\nconst s3 = [];\nfor (let i = 0; i < 4; i++) {\n  try { s3.push(extractLLM(items[i])); } catch(e) { s3.push(\"Unavailable\"); }\n}\nconst td = $(\"Parse Webhook\").first().json;\nconst prompt = \"Final Consensus Aggregator for \" + (td.ticker || \"token\") + \".\\n\"\n  + \"Price: $\" + td.price + \", MCap: $\" + td.market_cap + \", FDV: $\" + td.fdv + \"\\n\\n\"\n  + \"--- GPT ---\\n\" + s3[0] + \"\\n\"\n  + \"--- Gemini ---\\n\" + s3[1] + \"\\n\"\n  + \"--- Claude ---\\n\" + s3[2] + \"\\n\"\n  + \"--- Grok ---\\n\" + s3[3] + \"\\n\\n\"\n  + \"Aggregate: median scores, majority vote categories, synthesize thesis/catalysts/risks.\\n\"\n  + \"Consensus spread: <=10 HIGH, <=25 MIXED, <=40 LOW, >40 CONFLICTED.\\n\"\n  + \"Output key: value format. Include gpt_score, gemini_score, claude_score, grok_score.\";\nreturn [{ json: { requestBody: { model: \"claude-opus-4-6\", messages: [{ role: \"user\", content: prompt }], max_tokens: 4000 } } }];"
       }
     },
     {
@@ -498,25 +777,35 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        3960,
+        4250,
         300
       ],
       "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "url": "https://api.anthropic.com/v1/messages",
         "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json.requestBody }}",
         "options": {
           "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
         }
       },
       "retryOnFail": true,
@@ -530,11 +819,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4180,
+        4500,
         300
       ],
       "parameters": {
-        "jsCode": "// Format result for Nash Satoshi webhook callback\nconst run_id = $('Extract Input').item.json.run_id || '';\nconst resp = $input.all()[0].json;\nlet result = '';\ntry { result = resp.choices[0].message.content || ''; } catch(e) { result = JSON.stringify(resp); }\nreturn [{ json: { webhookBody: { run_id, state: 'DONE', outputs: { analysis_result: result } } } }];"
+        "jsCode": "// Format result for Nash Satoshi webhook callback\nconst run_id = $(\"Parse Webhook\").item.json.run_id || \"\";\nconst resp = $input.all()[0].json;\nlet result = \"\";\ntry {\n  if (resp.content && Array.isArray(resp.content)) { result = resp.content[0].text || \"\"; }\n  else if (resp.choices) { result = resp.choices[0].message.content || \"\"; }\n  else { result = JSON.stringify(resp); }\n} catch(e) { result = JSON.stringify(resp); }\nreturn [{ json: { webhookBody: { run_id: run_id, state: \"DONE\", outputs: { analysis_result: result } } } }];"
       }
     },
     {
@@ -543,7 +832,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        4400,
+        4750,
         300
       ],
       "parameters": {
@@ -578,7 +867,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        900
+        1000
       ],
       "parameters": {}
     },
@@ -588,11 +877,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        220,
-        900
+        250,
+        1000
       ],
       "parameters": {
-        "jsCode": "// Build failure webhook body\nlet run_id = '';\ntry { run_id = $('Extract Input').item.json.run_id || ''; } catch(e) { run_id = 'unknown'; }\nreturn [{ json: { webhookBody: { run_id, state: 'FAILED', outputs: {} } } }];"
+        "jsCode": "// Build failure webhook body\nlet run_id = \"\";\ntry { run_id = $(\"Parse Webhook\").item.json.run_id || \"\"; } catch(e) { run_id = \"unknown\"; }\nreturn [{ json: { webhookBody: { run_id: run_id, state: \"FAILED\", outputs: {} } } }];"
       }
     },
     {
@@ -601,8 +890,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
-        900
+        500,
+        1000
       ],
       "parameters": {
         "method": "POST",
@@ -627,251 +916,6 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 5000
-    },
-    {
-      "id": "bf1",
-      "name": "Brave Fundamentals 1",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        -50
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent($json.ticker + ' ' + $json.name + ' tokenomics team backers') + '&count=5' }}",
-        "authentication": "none",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Subscription-Token",
-              "value": "={{ $env.BRAVE_API_KEY }}"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 3000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "bf2",
-      "name": "Brave Fundamentals 2",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        150
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent($json.ticker + ' crypto roadmap catalysts 2026') + '&count=5' }}",
-        "authentication": "none",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Subscription-Token",
-              "value": "={{ $env.BRAVE_API_KEY }}"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 3000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "wfm1",
-      "name": "Wait Fund Merge",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1320,
-        50
-      ],
-      "parameters": {
-        "mode": "append",
-        "numberInputs": 2
-      }
-    },
-    {
-      "id": "mf1",
-      "name": "Merge Fundamentals",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1540,
-        50
-      ],
-      "parameters": {
-        "jsCode": "// Combine Brave search results and build fundamentals synthesis prompt\nconst items = $input.all();\nlet tokenData = null;\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\n\n// Extract Brave web results from both searches\nlet results1 = [], results2 = [];\ntry {\n  const r1 = items[0].json;\n  results1 = r1.web && r1.web.results ? r1.web.results : [];\n} catch(e) {}\ntry {\n  const r2 = items[1].json;\n  results2 = r2.web && r2.web.results ? r2.web.results : [];\n} catch(e) {}\n\nconst allResults = [...results1, ...results2];\nconst searchContext = allResults.map((r, i) => `[${i+1}] ${r.title}\\n${r.description}\\nURL: ${r.url}`).join('\\n\\n');\n\nconst d = tokenData;\nconst prompt = `You are a crypto research analyst. Analyze this token using the REAL search results provided below.\n\n- Ticker: ${d.ticker}\n- Name: ${d.name}\n- Chain: ${d.chain}\n- Contract: ${d.contract_address}\n- Price: $${d.price}\n- Market Cap: $${d.market_cap}\n- FDV: $${d.fdv}\n- 24h Volume: $${d.volume_24h}\n\nREAL WEB SEARCH RESULTS:\n${searchContext}\n\nUsing ONLY the search results above and the token data provided, cover:\n1. Narrative Positioning\n2. Project Fundamentals\n3. Team & Backers\n4. Value Capture\n5. Traction & Usage\n6. Tokenomics & Unlocks\n7. Roadmap & Catalysts\n8. Competitive Analysis\n\nBe specific and data-driven. Cite sources from the search results. If information is not available in the search results, explicitly state \"Not found in search results\" rather than speculating.`;\n\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];"
-      }
-    },
-    {
-      "id": "fs1",
-      "name": "Fundamentals Synthesis",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1760,
-        50
-      ],
-      "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json.requestBody }}",
-        "options": {
-          "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 5000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "lcs1",
-      "name": "LunarCrush Social",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        450
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://lunarcrush.com/api4/public/coins/' + $json.ticker.toLowerCase() + '/v1' }}",
-        "authentication": "none",
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 3000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "brs1",
-      "name": "Brave Social",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1100,
-        650
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://api.search.brave.com/res/v1/web/search?q=' + encodeURIComponent($json.ticker + ' crypto community sentiment 2026') + '&count=5' }}",
-        "authentication": "none",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "X-Subscription-Token",
-              "value": "={{ $env.BRAVE_API_KEY }}"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 3000,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "id": "wsm1",
-      "name": "Wait Social Merge",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1320,
-        550
-      ],
-      "parameters": {
-        "mode": "append",
-        "numberInputs": 2
-      }
-    },
-    {
-      "id": "msoc1",
-      "name": "Merge Social",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1540,
-        550
-      ],
-      "parameters": {
-        "jsCode": "// Combine LunarCrush metrics and Brave social search results, build synthesis prompt\nconst items = $input.all();\nlet tokenData = null;\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\n\n// LunarCrush data (input 0)\nlet lunarContext = 'LunarCrush data unavailable';\ntry {\n  const lc = items[0].json;\n  if (lc && !lc.error) {\n    const metrics = [];\n    if (lc.galaxy_score !== undefined) metrics.push('Galaxy Score: ' + lc.galaxy_score);\n    if (lc.alt_rank !== undefined) metrics.push('Alt Rank: ' + lc.alt_rank);\n    if (lc.social_dominance !== undefined) metrics.push('Social Dominance: ' + lc.social_dominance);\n    if (lc.social_volume !== undefined) metrics.push('Social Volume: ' + lc.social_volume);\n    if (lc.social_score !== undefined) metrics.push('Social Score: ' + lc.social_score);\n    if (lc.sentiment !== undefined) metrics.push('Sentiment: ' + lc.sentiment);\n    if (lc.interactions_24h !== undefined) metrics.push('Interactions 24h: ' + lc.interactions_24h);\n    if (lc.social_contributors !== undefined) metrics.push('Social Contributors: ' + lc.social_contributors);\n    if (metrics.length > 0) lunarContext = metrics.join('\\n');\n  }\n} catch(e) { lunarContext = 'LunarCrush data unavailable: ' + e.message; }\n\n// Brave social search results (input 1)\nlet braveResults = [];\ntry {\n  const br = items[1].json;\n  braveResults = br.web && br.web.results ? br.web.results : [];\n} catch(e) {}\nconst searchContext = braveResults.map((r, i) => `[${i+1}] ${r.title}\\n${r.description}\\nURL: ${r.url}`).join('\\n\\n');\n\nconst d = tokenData;\nconst prompt = `You are a crypto social intelligence analyst. Analyze social signals for this token using the REAL data provided below.\n\n- Ticker: ${d.ticker}\n- Name: ${d.name}\n- Chain: ${d.chain}\n- Price: $${d.price}\n- Market Cap: $${d.market_cap}\n\nLUNARCRUSH METRICS:\n${lunarContext}\n\nSOCIAL WEB SEARCH RESULTS:\n${searchContext}\n\nUsing ONLY the data above, cover:\n1. Attention Metrics (social volume, dominance, galaxy score)\n2. KOL Signals\n3. Sentiment Analysis\n4. Community Coordination\n5. Narrative Heat\n\nBe specific and data-driven. Cite sources. If information is not available, explicitly state so rather than speculating.`;\n\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 3000 } } }];"
-      }
-    },
-    {
-      "id": "ss1",
-      "name": "Social Synthesis",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1760,
-        550
-      ],
-      "parameters": {
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "method": "POST",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json.requestBody }}",
-        "options": {
-          "timeout": 120000
-        }
-      },
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "eKuUbdByJmAQfvxu",
-          "name": "OpenRouter Header Auth"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 5000,
-      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -879,112 +923,183 @@
       "main": [
         [
           {
-            "node": "Extract Input",
+            "node": "Parse Webhook",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract Input": {
+    "Parse Webhook": {
       "main": [
         [
           {
-            "node": "Source Check",
+            "node": "Build Scrape URLs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Brave Team",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Brave Fake",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Brave Catalysts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build X Queries",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Source Check": {
+    "Build Scrape URLs": {
       "main": [
         [
           {
-            "node": "DexScreener Fetch",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "CoinGecko Fetch",
+            "node": "Firecrawl Scrape",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "CoinGecko Fetch": {
+    "Firecrawl Scrape": {
       "main": [
         [
           {
-            "node": "Parse CoinGecko",
+            "node": "Attach Label",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse CoinGecko": {
+    "Attach Label": {
       "main": [
         [
           {
-            "node": "Brave Fundamentals 1",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Brave Fundamentals 2",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "LunarCrush Social",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Brave Social",
+            "node": "Wait Fund Sources",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "DexScreener Fetch": {
+    "Brave Team": {
       "main": [
         [
           {
-            "node": "Parse DexScreener",
+            "node": "Wait Fund Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Brave Fake": {
+      "main": [
+        [
+          {
+            "node": "Wait Fund Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Brave Catalysts": {
+      "main": [
+        [
+          {
+            "node": "Wait Fund Sources",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Wait Fund Sources": {
+      "main": [
+        [
+          {
+            "node": "Merge Fundamentals",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse DexScreener": {
+    "Merge Fundamentals": {
       "main": [
         [
           {
-            "node": "Brave Fundamentals 1",
+            "node": "Fundamentals Synthesis",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Fundamentals Synthesis": {
+      "main": [
+        [
           {
-            "node": "Brave Fundamentals 2",
+            "node": "Merge Research",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Build X Queries": {
+      "main": [
+        [
           {
-            "node": "LunarCrush Social",
+            "node": "X Search",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "X Search": {
+      "main": [
+        [
           {
-            "node": "Brave Social",
+            "node": "Merge Social",
             "type": "main",
             "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Social": {
+      "main": [
+        [
+          {
+            "node": "Social Synthesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Social Synthesis": {
+      "main": [
+        [
+          {
+            "node": "Merge Research",
+            "type": "main",
+            "index": 1
           }
         ]
       ]
@@ -1227,121 +1342,10 @@
           }
         ]
       ]
-    },
-    "Brave Fundamentals 1": {
-      "main": [
-        [
-          {
-            "node": "Wait Fund Merge",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Brave Fundamentals 2": {
-      "main": [
-        [
-          {
-            "node": "Wait Fund Merge",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait Fund Merge": {
-      "main": [
-        [
-          {
-            "node": "Merge Fundamentals",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge Fundamentals": {
-      "main": [
-        [
-          {
-            "node": "Fundamentals Synthesis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fundamentals Synthesis": {
-      "main": [
-        [
-          {
-            "node": "Merge Research",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "LunarCrush Social": {
-      "main": [
-        [
-          {
-            "node": "Wait Social Merge",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Brave Social": {
-      "main": [
-        [
-          {
-            "node": "Wait Social Merge",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Wait Social Merge": {
-      "main": [
-        [
-          {
-            "node": "Merge Social",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge Social": {
-      "main": [
-        [
-          {
-            "node": "Social Synthesis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Social Synthesis": {
-      "main": [
-        [
-          {
-            "node": "Merge Research",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner"
-  },
-  "id": "8wMgbteATCO60Hl7"
+  }
 }
