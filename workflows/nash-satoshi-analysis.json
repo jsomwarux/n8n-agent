@@ -8,102 +8,1100 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [0, 300],
+      "position": [
+        0,
+        300
+      ],
       "webhookId": "nash-satoshi-webhook",
       "parameters": {
         "httpMethod": "POST",
         "path": "nash-satoshi-analysis",
         "responseMode": "onReceived",
         "options": {
-          "responseCode": { "values": { "responseCode": "customCode", "customCode": 202 } },
+          "responseCode": {
+            "values": {
+              "responseCode": "customCode",
+              "customCode": 202
+            }
+          },
           "responseData": "{\"status\":\"accepted\",\"message\":\"Analysis queued\"}"
         }
       }
     },
     {
-      "id": "ei1", "name": "Extract Input", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [220, 300],
-      "parameters": { "jsCode": "// Extract and validate webhook input\nconst items = $input.all();\nconst body = items[0].json.body || items[0].json;\nconst source = (body.source || 'coingecko').toLowerCase().trim();\nconst contract_address = (body.contract_address || '').trim();\nconst chain = (body.chain || 'ethereum').toLowerCase().trim();\nconst run_id = (body.run_id || '').trim();\nif (!contract_address) { throw new Error('Missing required field: contract_address'); }\nreturn [{ json: { source, contract_address, chain, run_id, analysis_date: new Date().toISOString() } }];" }
+      "id": "ei1",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Extract and validate webhook input\nconst items = $input.all();\nconst body = items[0].json.body || items[0].json;\nconst source = (body.source || 'coingecko').toLowerCase().trim();\nconst contract_address = (body.contract_address || '').trim();\nconst chain = (body.chain || 'ethereum').toLowerCase().trim();\nconst run_id = (body.run_id || '').trim();\nif (!contract_address) { throw new Error('Missing required field: contract_address'); }\nreturn [{ json: { source, contract_address, chain, run_id, analysis_date: new Date().toISOString() } }];"
+      }
     },
     {
-      "id": "sc1", "name": "Source Check", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [440, 300],
-      "parameters": { "conditions": { "options": { "version": 2, "leftValue": "", "caseSensitive": false, "typeValidation": "strict" }, "combinator": "and", "conditions": [{ "id": "cond-src", "leftValue": "={{ $json.source }}", "rightValue": "dexscreener", "operator": { "type": "string", "operation": "contains" } }] } },
+      "id": "sc1",
+      "name": "Source Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": false,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-src",
+              "leftValue": "={{ $json.source }}",
+              "rightValue": "dexscreener",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ]
+        }
+      },
       "onError": "continueErrorOutput"
     },
     {
-      "id": "cgf1", "name": "CoinGecko Fetch", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [660, 100],
-      "parameters": { "method": "GET", "url": "={{ 'https://api.coingecko.com/api/v3/coins/' + $json.chain + '/contract/' + $json.contract_address }}", "authentication": "none", "options": { "timeout": 30000 } },
-      "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput"
+      "id": "cgf1",
+      "name": "CoinGecko Fetch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.coingecko.com/api/v3/coins/' + $json.chain + '/contract/' + $json.contract_address }}",
+        "authentication": "none",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "pcg1", "name": "Parse CoinGecko", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [880, 100],
-      "parameters": { "jsCode": "// Parse CoinGecko response\nconst input = $('Extract Input').item.json;\nconst d = $input.all()[0].json;\ntry {\n  const ticker = (d.symbol || '').toUpperCase();\n  const name = d.name || '';\n  const website = (d.links && d.links.homepage && d.links.homepage[0]) || '';\n  const md = d.market_data || {};\n  return [{ json: { ...input, ticker, name, website, categories: (d.categories || []).join(', '), market_cap: md.market_cap ? (md.market_cap.usd || 0) : 0, fdv: md.fully_diluted_valuation ? (md.fully_diluted_valuation.usd || 0) : 0, volume_24h: md.total_volume ? (md.total_volume.usd || 0) : 0, price: md.current_price ? (md.current_price.usd || 0) : 0, price_change_24h: md.price_change_percentage_24h || 0, price_change_7d: md.price_change_percentage_7d || 0, dex_liquidity_usd: 0, dex_buys_24h: 0, dex_sells_24h: 0, dex_liquidity_pct: 0, data_source: 'coingecko' } }];\n} catch (e) { return [{ json: { ...input, ticker: '', name: '', parse_error: e.message, data_source: 'coingecko', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }]; }" }
+      "id": "pcg1",
+      "name": "Parse CoinGecko",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Parse CoinGecko response\nconst input = $('Extract Input').item.json;\nconst d = $input.all()[0].json;\ntry {\n  const ticker = (d.symbol || '').toUpperCase();\n  const name = d.name || '';\n  const website = (d.links && d.links.homepage && d.links.homepage[0]) || '';\n  const md = d.market_data || {};\n  return [{ json: { ...input, ticker, name, website, categories: (d.categories || []).join(', '), market_cap: md.market_cap ? (md.market_cap.usd || 0) : 0, fdv: md.fully_diluted_valuation ? (md.fully_diluted_valuation.usd || 0) : 0, volume_24h: md.total_volume ? (md.total_volume.usd || 0) : 0, price: md.current_price ? (md.current_price.usd || 0) : 0, price_change_24h: md.price_change_percentage_24h || 0, price_change_7d: md.price_change_percentage_7d || 0, dex_liquidity_usd: 0, dex_buys_24h: 0, dex_sells_24h: 0, dex_liquidity_pct: 0, data_source: 'coingecko' } }];\n} catch (e) { return [{ json: { ...input, ticker: '', name: '', parse_error: e.message, data_source: 'coingecko', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }]; }"
+      }
     },
     {
-      "id": "dxf1", "name": "DexScreener Fetch", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [660, 500],
-      "parameters": { "method": "GET", "url": "={{ 'https://api.dexscreener.com/latest/dex/tokens/' + $json.contract_address }}", "authentication": "none", "options": { "timeout": 30000 } },
-      "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput"
+      "id": "dxf1",
+      "name": "DexScreener Fetch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        500
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.dexscreener.com/latest/dex/tokens/' + $json.contract_address }}",
+        "authentication": "none",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "pdx1", "name": "Parse DexScreener", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [880, 500],
-      "parameters": { "jsCode": "// Parse DexScreener response\nconst input = $('Extract Input').item.json;\nconst d = $input.all()[0].json;\ntry {\n  const pairs = d.pairs || [];\n  const chain = input.chain;\n  const filtered = pairs.filter(p => (p.chainId || '').toLowerCase().includes(chain) && (p.volume ? p.volume.h24 : 0) > 1000);\n  const best = filtered.sort((a, b) => ((b.volume ? b.volume.h24 : 0) || 0) - ((a.volume ? a.volume.h24 : 0) || 0))[0] || pairs[0];\n  if (!best) return [{ json: { ...input, ticker: '', name: '', parse_error: 'No pairs', data_source: 'dexscreener', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }];\n  const bt = best.baseToken || {};\n  const liq = best.liquidity ? (best.liquidity.usd || 0) : 0;\n  const mc = best.marketCap || 0;\n  return [{ json: { ...input, ticker: (bt.symbol || '').toUpperCase(), name: bt.name || '', website: '', categories: '', market_cap: mc, fdv: best.fdv || 0, volume_24h: best.volume ? (best.volume.h24 || 0) : 0, price: parseFloat(best.priceUsd || '0'), price_change_24h: best.priceChange ? (best.priceChange.h24 || 0) : 0, price_change_7d: 0, dex_liquidity_usd: liq, dex_buys_24h: best.txns && best.txns.h24 ? best.txns.h24.buys || 0 : 0, dex_sells_24h: best.txns && best.txns.h24 ? best.txns.h24.sells || 0 : 0, dex_liquidity_pct: mc > 0 ? (liq / mc * 100) : 0, data_source: 'dexscreener' } }];\n} catch (e) { return [{ json: { ...input, ticker: '', name: '', parse_error: e.message, data_source: 'dexscreener', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }]; }" }
+      "id": "pdx1",
+      "name": "Parse DexScreener",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// Parse DexScreener response\nconst input = $('Extract Input').item.json;\nconst d = $input.all()[0].json;\ntry {\n  const pairs = d.pairs || [];\n  const chain = input.chain;\n  const filtered = pairs.filter(p => (p.chainId || '').toLowerCase().includes(chain) && (p.volume ? p.volume.h24 : 0) > 1000);\n  const best = filtered.sort((a, b) => ((b.volume ? b.volume.h24 : 0) || 0) - ((a.volume ? a.volume.h24 : 0) || 0))[0] || pairs[0];\n  if (!best) return [{ json: { ...input, ticker: '', name: '', parse_error: 'No pairs', data_source: 'dexscreener', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }];\n  const bt = best.baseToken || {};\n  const liq = best.liquidity ? (best.liquidity.usd || 0) : 0;\n  const mc = best.marketCap || 0;\n  return [{ json: { ...input, ticker: (bt.symbol || '').toUpperCase(), name: bt.name || '', website: '', categories: '', market_cap: mc, fdv: best.fdv || 0, volume_24h: best.volume ? (best.volume.h24 || 0) : 0, price: parseFloat(best.priceUsd || '0'), price_change_24h: best.priceChange ? (best.priceChange.h24 || 0) : 0, price_change_7d: 0, dex_liquidity_usd: liq, dex_buys_24h: best.txns && best.txns.h24 ? best.txns.h24.buys || 0 : 0, dex_sells_24h: best.txns && best.txns.h24 ? best.txns.h24.sells || 0 : 0, dex_liquidity_pct: mc > 0 ? (liq / mc * 100) : 0, data_source: 'dexscreener' } }];\n} catch (e) { return [{ json: { ...input, ticker: '', name: '', parse_error: e.message, data_source: 'dexscreener', market_cap: 0, fdv: 0, volume_24h: 0, price: 0, price_change_24h: 0, price_change_7d: 0 } }]; }"
+      }
     },
-    { "id": "bfp1", "name": "Build Fundamentals Prompt", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1100, 100], "parameters": { "jsCode": "// Build fundamentals research prompt\nconst d = $input.all()[0].json;\nconst prompt = `You are a crypto research analyst. Analyze this token:\\n- Ticker: ${d.ticker}\\n- Name: ${d.name}\\n- Chain: ${d.chain}\\n- Contract: ${d.contract_address}\\n- Price: $${d.price}\\n- Market Cap: $${d.market_cap}\\n- FDV: $${d.fdv}\\n- 24h Volume: $${d.volume_24h}\\n\\nCover: Narrative Positioning, Project Fundamentals, Team & Backers, Value Capture, Traction & Usage, Tokenomics & Unlocks, Roadmap & Catalysts, Competitive Analysis.\\nBe specific and data-driven.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-5', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];" } },
-    { "id": "fr1", "name": "Fundamentals Research", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1320, 100], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.requestBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "bsp1", "name": "Build Social Prompt", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1100, 500], "parameters": { "jsCode": "// Build social research prompt\nconst d = $input.all()[0].json;\nconst prompt = `You are a crypto social intelligence analyst. Analyze social signals for:\\n- Ticker: ${d.ticker}\\n- Name: ${d.name}\\n- Chain: ${d.chain}\\n- Price: $${d.price}\\n- Market Cap: $${d.market_cap}\\n\\nCover: Attention Metrics, Account Analysis, KOL Signals, Sentiment Analysis, Community Coordination, Divergence Check, Narrative Heat.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-5', messages: [{ role: 'user', content: prompt }], max_tokens: 3000 } } }];" } },
-    { "id": "sr1", "name": "Social Research", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1320, 500], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.requestBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "mr1", "name": "Merge Research", "type": "n8n-nodes-base.merge", "typeVersion": 3.2, "position": [1540, 300], "parameters": { "mode": "append", "numberInputs": 2 } },
-    { "id": "cr1", "name": "Combine Research", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1760, 300], "parameters": { "jsCode": "// Combine research outputs\nconst items = $input.all();\nlet tokenData = {};\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\nlet fund = '', social = '';\ntry { fund = items[0].json.choices[0].message.content || ''; } catch(e) { fund = 'Unavailable'; }\ntry { social = items[1].json.choices[0].message.content || ''; } catch(e) { social = 'Unavailable'; }\nreturn [{ json: { ...tokenData, fundamentals_research: fund, social_research: social } }];" } },
-    { "id": "bs2", "name": "Build Stage2 Bodies", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1980, 300], "parameters": { "jsCode": "// Stage 2: 4-LLM analysis prompt (full Apex Game Theorist prompt with all output fields)\nconst d = $input.all()[0].json;\nconst prompt = `You are the Apex Crypto Game Theorist...\\n\\nTOKEN: ${d.ticker} (${d.name})\\nChain: ${d.chain}, Price: $${d.price}, MCap: $${d.market_cap}, FDV: $${d.fdv}\\nVolume 24h: $${d.volume_24h}, DEX Liq: $${d.dex_liquidity_usd}\\n\\nFUNDAMENTALS:\\n${d.fundamentals_research}\\n\\nSOCIAL:\\n${d.social_research}\\n\\nOutput ALL fields in key: value format (one per line, no markdown).`;\nconst models = { gpt: 'openai/gpt-4o', gemini: 'google/gemini-2.5-pro', claude: 'anthropic/claude-sonnet-4-5', grok: 'x-ai/grok-3' };\nconst mk = (m) => ({ model: m, messages: [{ role: 'user', content: prompt }], max_tokens: 4000 });\nreturn [{ json: { gptBody: mk(models.gpt), geminiBody: mk(models.gemini), claudeBody: mk(models.claude), grokBody: mk(models.grok) } }];" } },
-    { "id": "gs2", "name": "GPT Stage2", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2200, -50], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage2 Bodies').item.json.gptBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "ges2", "name": "Gemini Stage2", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2200, 200], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage2 Bodies').item.json.geminiBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "cs2", "name": "Claude Stage2", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2200, 450], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage2 Bodies').item.json.claudeBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "grs2", "name": "Grok Stage2", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2200, 700], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage2 Bodies').item.json.grokBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "ms2", "name": "Merge Stage2", "type": "n8n-nodes-base.merge", "typeVersion": 3.2, "position": [2420, 300], "parameters": { "mode": "append", "numberInputs": 4 } },
-    { "id": "bs3", "name": "Build Stage3 Bodies", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [2640, 300], "parameters": { "jsCode": "// Stage 3: Deliberation - each model reviews own + 3 others\nconst items = $input.all();\nconst names = ['GPT', 'Gemini', 'Claude', 'Grok'];\nconst ids = ['openai/gpt-4o', 'google/gemini-2.5-pro', 'anthropic/claude-sonnet-4-5', 'x-ai/grok-3'];\nconst s2 = [];\nfor (let i = 0; i < 4; i++) { try { s2.push(items[i].json.choices[0].message.content); } catch(e) { s2.push('Unavailable'); } }\nlet ticker = '';\ntry { ticker = $('Parse CoinGecko').first().json.ticker; } catch(e) {}\nif (!ticker) try { ticker = $('Parse DexScreener').first().json.ticker; } catch(e) {}\nconst bp = (mi) => { const others = [0,1,2,3].filter(i => i !== mi).map(i => `--- ${names[i]} ---\\n${s2[i]}`).join('\\n'); return `Review your ${ticker} analysis vs 3 others.\\nYOURS:\\n${s2[mi]}\\nOTHERS:\\n${others}\\nRevise if evidence warrants. Output key: value format.`; };\nreturn [{ json: { gptBody: { model: ids[0], messages: [{ role: 'user', content: bp(0) }], max_tokens: 4000 }, geminiBody: { model: ids[1], messages: [{ role: 'user', content: bp(1) }], max_tokens: 4000 }, claudeBody: { model: ids[2], messages: [{ role: 'user', content: bp(2) }], max_tokens: 4000 }, grokBody: { model: ids[3], messages: [{ role: 'user', content: bp(3) }], max_tokens: 4000 } } }];" } },
-    { "id": "gs3", "name": "GPT Stage3", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2860, -50], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage3 Bodies').item.json.gptBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "ges3", "name": "Gemini Stage3", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2860, 200], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage3 Bodies').item.json.geminiBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "cs3", "name": "Claude Stage3", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2860, 450], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage3 Bodies').item.json.claudeBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "grs3", "name": "Grok Stage3", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [2860, 700], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $('Build Stage3 Bodies').item.json.grokBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "ms3", "name": "Merge Stage3", "type": "n8n-nodes-base.merge", "typeVersion": 3.2, "position": [3080, 300], "parameters": { "mode": "append", "numberInputs": 4 } },
-    { "id": "bs4", "name": "Build Stage4 Body", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [3300, 300], "parameters": { "jsCode": "// Stage 4: Consensus aggregation\nconst items = $input.all();\nconst s3 = [];\nfor (let i = 0; i < 4; i++) { try { s3.push(items[i].json.choices[0].message.content); } catch(e) { s3.push('Unavailable'); } }\nlet td = {};\ntry { td = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!td || !td.ticker) try { td = $('Parse DexScreener').first().json; } catch(e) {}\nconst prompt = `Final Consensus Aggregator for ${td.ticker || 'token'}.\\nPrice: $${td.price}, MCap: $${td.market_cap}, FDV: $${td.fdv}\\n\\n--- GPT ---\\n${s3[0]}\\n--- Gemini ---\\n${s3[1]}\\n--- Claude ---\\n${s3[2]}\\n--- Grok ---\\n${s3[3]}\\n\\nAggregate: median scores, majority vote categories, synthesize thesis/catalysts/risks.\\nConsensus spread: <=10 HIGH, <=25 MIXED, <=40 LOW, >40 CONFLICTED.\\nOutput key: value format. Include gpt_score, gemini_score, claude_score, grok_score.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-5', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];" } },
-    { "id": "s4a", "name": "Stage4 Aggregation", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [3520, 300], "parameters": { "url": "https://openrouter.ai/api/v1/chat/completions", "method": "POST", "authentication": "predefinedCredentialType", "nodeCredentialType": "httpHeaderAuth", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.requestBody }}", "options": { "timeout": 120000 } }, "credentials": { "httpHeaderAuth": { "id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth" } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "fmr1", "name": "Format Result", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [3740, 300], "parameters": { "jsCode": "// Format result for Nash Satoshi webhook callback\nconst run_id = $('Extract Input').item.json.run_id || '';\nconst resp = $input.all()[0].json;\nlet result = '';\ntry { result = resp.choices[0].message.content || ''; } catch(e) { result = JSON.stringify(resp); }\nreturn [{ json: { webhookBody: { run_id, state: 'DONE', outputs: { analysis_result: result } } } }];" } },
-    { "id": "snd1", "name": "Send Result", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [3960, 300], "parameters": { "method": "POST", "url": "https://nashsatoshi.com/api/webhook/gumloop", "authentication": "none", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.webhookBody }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] }, "options": { "timeout": 30000 } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000, "onError": "continueRegularOutput" },
-    { "id": "et1", "name": "Error Trigger", "type": "n8n-nodes-base.errorTrigger", "typeVersion": 1, "position": [0, 900], "parameters": {} },
-    { "id": "ef1", "name": "Error Format", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [220, 900], "parameters": { "jsCode": "// Build failure webhook body\nlet run_id = '';\ntry { run_id = $('Extract Input').item.json.run_id || ''; } catch(e) { run_id = 'unknown'; }\nreturn [{ json: { webhookBody: { run_id, state: 'FAILED', outputs: {} } } }];" } },
-    { "id": "sf1", "name": "Send Failure", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [440, 900], "parameters": { "method": "POST", "url": "https://nashsatoshi.com/api/webhook/gumloop", "authentication": "none", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ $json.webhookBody }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] }, "options": { "timeout": 30000 } }, "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 5000 }
+    {
+      "id": "bfp1",
+      "name": "Build Fundamentals Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Build fundamentals research prompt\nconst d = $input.all()[0].json;\nconst prompt = `You are a crypto research analyst. Analyze this token:\\n- Ticker: ${d.ticker}\\n- Name: ${d.name}\\n- Chain: ${d.chain}\\n- Contract: ${d.contract_address}\\n- Price: $${d.price}\\n- Market Cap: $${d.market_cap}\\n- FDV: $${d.fdv}\\n- 24h Volume: $${d.volume_24h}\\n\\nCover: Narrative Positioning, Project Fundamentals, Team & Backers, Value Capture, Traction & Usage, Tokenomics & Unlocks, Roadmap & Catalysts, Competitive Analysis.\\nBe specific and data-driven.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];"
+      }
+    },
+    {
+      "id": "fr1",
+      "name": "Fundamentals Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "bsp1",
+      "name": "Build Social Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// Build social research prompt\nconst d = $input.all()[0].json;\nconst prompt = `You are a crypto social intelligence analyst. Analyze social signals for:\\n- Ticker: ${d.ticker}\\n- Name: ${d.name}\\n- Chain: ${d.chain}\\n- Price: $${d.price}\\n- Market Cap: $${d.market_cap}\\n\\nCover: Attention Metrics, Account Analysis, KOL Signals, Sentiment Analysis, Community Coordination, Divergence Check, Narrative Heat.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-sonnet-4-6', messages: [{ role: 'user', content: prompt }], max_tokens: 3000 } } }];"
+      }
+    },
+    {
+      "id": "sr1",
+      "name": "Social Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        500
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mr1",
+      "name": "Merge Research",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "cr1",
+      "name": "Combine Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Combine research outputs\nconst items = $input.all();\nlet tokenData = {};\ntry { tokenData = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!tokenData || !tokenData.ticker) { try { tokenData = $('Parse DexScreener').first().json; } catch(e) {} }\nif (!tokenData) { tokenData = $('Extract Input').item.json; }\nlet fund = '', social = '';\ntry { fund = items[0].json.choices[0].message.content || ''; } catch(e) { fund = 'Unavailable'; }\ntry { social = items[1].json.choices[0].message.content || ''; } catch(e) { social = 'Unavailable'; }\nreturn [{ json: { ...tokenData, fundamentals_research: fund, social_research: social } }];"
+      }
+    },
+    {
+      "id": "bs2",
+      "name": "Build Stage2 Bodies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Stage 2: 4-LLM analysis prompt (full Apex Game Theorist prompt with all output fields)\nconst d = $input.all()[0].json;\nconst prompt = `You are the Apex Crypto Game Theorist...\\n\\nTOKEN: ${d.ticker} (${d.name})\\nChain: ${d.chain}, Price: $${d.price}, MCap: $${d.market_cap}, FDV: $${d.fdv}\\nVolume 24h: $${d.volume_24h}, DEX Liq: $${d.dex_liquidity_usd}\\n\\nFUNDAMENTALS:\\n${d.fundamentals_research}\\n\\nSOCIAL:\\n${d.social_research}\\n\\nOutput ALL fields in key: value format (one per line, no markdown).`;\nconst models = { gpt: 'openai/gpt-5', gemini: 'google/gemini-3.1-pro-preview', claude: 'anthropic/claude-sonnet-4-6', grok: 'x-ai/grok-4' };\nconst mk = (m) => ({ model: m, messages: [{ role: 'user', content: prompt }], max_tokens: 4000 });\nreturn [{ json: { gptBody: mk(models.gpt), geminiBody: mk(models.gemini), claudeBody: mk(models.claude), grokBody: mk(models.grok) } }];"
+      }
+    },
+    {
+      "id": "gs2",
+      "name": "GPT Stage2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        -50
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage2 Bodies').item.json.gptBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ges2",
+      "name": "Gemini Stage2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        200
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage2 Bodies').item.json.geminiBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cs2",
+      "name": "Claude Stage2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        450
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage2 Bodies').item.json.claudeBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "grs2",
+      "name": "Grok Stage2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        700
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage2 Bodies').item.json.grokBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ms2",
+      "name": "Merge Stage2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2420,
+        300
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "bs3",
+      "name": "Build Stage3 Bodies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Stage 3: Deliberation - each model reviews own + 3 others\nconst items = $input.all();\nconst names = ['GPT', 'Gemini', 'Claude', 'Grok'];\nconst ids = ['openai/gpt-5', 'google/gemini-3.1-pro-preview', 'anthropic/claude-sonnet-4-6', 'x-ai/grok-4'];\nconst s2 = [];\nfor (let i = 0; i < 4; i++) { try { s2.push(items[i].json.choices[0].message.content); } catch(e) { s2.push('Unavailable'); } }\nlet ticker = '';\ntry { ticker = $('Parse CoinGecko').first().json.ticker; } catch(e) {}\nif (!ticker) try { ticker = $('Parse DexScreener').first().json.ticker; } catch(e) {}\nconst bp = (mi) => { const others = [0,1,2,3].filter(i => i !== mi).map(i => `--- ${names[i]} ---\\n${s2[i]}`).join('\\n'); return `Review your ${ticker} analysis vs 3 others.\\nYOURS:\\n${s2[mi]}\\nOTHERS:\\n${others}\\nRevise if evidence warrants. Output key: value format.`; };\nreturn [{ json: { gptBody: { model: ids[0], messages: [{ role: 'user', content: bp(0) }], max_tokens: 4000 }, geminiBody: { model: ids[1], messages: [{ role: 'user', content: bp(1) }], max_tokens: 4000 }, claudeBody: { model: ids[2], messages: [{ role: 'user', content: bp(2) }], max_tokens: 4000 }, grokBody: { model: ids[3], messages: [{ role: 'user', content: bp(3) }], max_tokens: 4000 } } }];"
+      }
+    },
+    {
+      "id": "gs3",
+      "name": "GPT Stage3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        -50
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage3 Bodies').item.json.gptBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ges3",
+      "name": "Gemini Stage3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        200
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage3 Bodies').item.json.geminiBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cs3",
+      "name": "Claude Stage3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        450
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage3 Bodies').item.json.claudeBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "grs3",
+      "name": "Grok Stage3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        700
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Build Stage3 Bodies').item.json.grokBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ms3",
+      "name": "Merge Stage3",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3080,
+        300
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "bs4",
+      "name": "Build Stage4 Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Stage 4: Consensus aggregation\nconst items = $input.all();\nconst s3 = [];\nfor (let i = 0; i < 4; i++) { try { s3.push(items[i].json.choices[0].message.content); } catch(e) { s3.push('Unavailable'); } }\nlet td = {};\ntry { td = $('Parse CoinGecko').first().json; } catch(e) {}\nif (!td || !td.ticker) try { td = $('Parse DexScreener').first().json; } catch(e) {}\nconst prompt = `Final Consensus Aggregator for ${td.ticker || 'token'}.\\nPrice: $${td.price}, MCap: $${td.market_cap}, FDV: $${td.fdv}\\n\\n--- GPT ---\\n${s3[0]}\\n--- Gemini ---\\n${s3[1]}\\n--- Claude ---\\n${s3[2]}\\n--- Grok ---\\n${s3[3]}\\n\\nAggregate: median scores, majority vote categories, synthesize thesis/catalysts/risks.\\nConsensus spread: <=10 HIGH, <=25 MIXED, <=40 LOW, >40 CONFLICTED.\\nOutput key: value format. Include gpt_score, gemini_score, claude_score, grok_score.`;\nreturn [{ json: { requestBody: { model: 'anthropic/claude-opus-4.6', messages: [{ role: 'user', content: prompt }], max_tokens: 4000 } } }];"
+      }
+    },
+    {
+      "id": "s4a",
+      "name": "Stage4 Aggregation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        300
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.requestBody }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eKuUbdByJmAQfvxu",
+          "name": "OpenRouter Header Auth"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fmr1",
+      "name": "Format Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3740,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Format result for Nash Satoshi webhook callback\nconst run_id = $('Extract Input').item.json.run_id || '';\nconst resp = $input.all()[0].json;\nlet result = '';\ntry { result = resp.choices[0].message.content || ''; } catch(e) { result = JSON.stringify(resp); }\nreturn [{ json: { webhookBody: { run_id, state: 'DONE', outputs: { analysis_result: result } } } }];"
+      }
+    },
+    {
+      "id": "snd1",
+      "name": "Send Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://nashsatoshi.com/api/webhook/gumloop",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.webhookBody }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "et1",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        900
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ef1",
+      "name": "Error Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        900
+      ],
+      "parameters": {
+        "jsCode": "// Build failure webhook body\nlet run_id = '';\ntry { run_id = $('Extract Input').item.json.run_id || ''; } catch(e) { run_id = 'unknown'; }\nreturn [{ json: { webhookBody: { run_id, state: 'FAILED', outputs: {} } } }];"
+      }
+    },
+    {
+      "id": "sf1",
+      "name": "Send Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        900
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://nashsatoshi.com/api/webhook/gumloop",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.webhookBody }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    }
   ],
   "connections": {
-    "Webhook Trigger": { "main": [[{ "node": "Extract Input", "type": "main", "index": 0 }]] },
-    "Extract Input": { "main": [[{ "node": "Source Check", "type": "main", "index": 0 }]] },
-    "Source Check": { "main": [[{ "node": "DexScreener Fetch", "type": "main", "index": 0 }], [{ "node": "CoinGecko Fetch", "type": "main", "index": 0 }]] },
-    "CoinGecko Fetch": { "main": [[{ "node": "Parse CoinGecko", "type": "main", "index": 0 }]] },
-    "Parse CoinGecko": { "main": [[{ "node": "Build Fundamentals Prompt", "type": "main", "index": 0 }, { "node": "Build Social Prompt", "type": "main", "index": 0 }]] },
-    "DexScreener Fetch": { "main": [[{ "node": "Parse DexScreener", "type": "main", "index": 0 }]] },
-    "Parse DexScreener": { "main": [[{ "node": "Build Fundamentals Prompt", "type": "main", "index": 0 }, { "node": "Build Social Prompt", "type": "main", "index": 0 }]] },
-    "Build Fundamentals Prompt": { "main": [[{ "node": "Fundamentals Research", "type": "main", "index": 0 }]] },
-    "Fundamentals Research": { "main": [[{ "node": "Merge Research", "type": "main", "index": 0 }]] },
-    "Build Social Prompt": { "main": [[{ "node": "Social Research", "type": "main", "index": 0 }]] },
-    "Social Research": { "main": [[{ "node": "Merge Research", "type": "main", "index": 1 }]] },
-    "Merge Research": { "main": [[{ "node": "Combine Research", "type": "main", "index": 0 }]] },
-    "Combine Research": { "main": [[{ "node": "Build Stage2 Bodies", "type": "main", "index": 0 }]] },
-    "Build Stage2 Bodies": { "main": [[{ "node": "GPT Stage2", "type": "main", "index": 0 }, { "node": "Gemini Stage2", "type": "main", "index": 0 }, { "node": "Claude Stage2", "type": "main", "index": 0 }, { "node": "Grok Stage2", "type": "main", "index": 0 }]] },
-    "GPT Stage2": { "main": [[{ "node": "Merge Stage2", "type": "main", "index": 0 }]] },
-    "Gemini Stage2": { "main": [[{ "node": "Merge Stage2", "type": "main", "index": 1 }]] },
-    "Claude Stage2": { "main": [[{ "node": "Merge Stage2", "type": "main", "index": 2 }]] },
-    "Grok Stage2": { "main": [[{ "node": "Merge Stage2", "type": "main", "index": 3 }]] },
-    "Merge Stage2": { "main": [[{ "node": "Build Stage3 Bodies", "type": "main", "index": 0 }]] },
-    "Build Stage3 Bodies": { "main": [[{ "node": "GPT Stage3", "type": "main", "index": 0 }, { "node": "Gemini Stage3", "type": "main", "index": 0 }, { "node": "Claude Stage3", "type": "main", "index": 0 }, { "node": "Grok Stage3", "type": "main", "index": 0 }]] },
-    "GPT Stage3": { "main": [[{ "node": "Merge Stage3", "type": "main", "index": 0 }]] },
-    "Gemini Stage3": { "main": [[{ "node": "Merge Stage3", "type": "main", "index": 1 }]] },
-    "Claude Stage3": { "main": [[{ "node": "Merge Stage3", "type": "main", "index": 2 }]] },
-    "Grok Stage3": { "main": [[{ "node": "Merge Stage3", "type": "main", "index": 3 }]] },
-    "Merge Stage3": { "main": [[{ "node": "Build Stage4 Body", "type": "main", "index": 0 }]] },
-    "Build Stage4 Body": { "main": [[{ "node": "Stage4 Aggregation", "type": "main", "index": 0 }]] },
-    "Stage4 Aggregation": { "main": [[{ "node": "Format Result", "type": "main", "index": 0 }]] },
-    "Format Result": { "main": [[{ "node": "Send Result", "type": "main", "index": 0 }]] },
-    "Error Trigger": { "main": [[{ "node": "Error Format", "type": "main", "index": 0 }]] },
-    "Error Format": { "main": [[{ "node": "Send Failure", "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [
+          {
+            "node": "Source Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Source Check": {
+      "main": [
+        [
+          {
+            "node": "DexScreener Fetch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CoinGecko Fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CoinGecko Fetch": {
+      "main": [
+        [
+          {
+            "node": "Parse CoinGecko",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CoinGecko": {
+      "main": [
+        [
+          {
+            "node": "Build Fundamentals Prompt",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Social Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DexScreener Fetch": {
+      "main": [
+        [
+          {
+            "node": "Parse DexScreener",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse DexScreener": {
+      "main": [
+        [
+          {
+            "node": "Build Fundamentals Prompt",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Social Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Fundamentals Prompt": {
+      "main": [
+        [
+          {
+            "node": "Fundamentals Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fundamentals Research": {
+      "main": [
+        [
+          {
+            "node": "Merge Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Social Prompt": {
+      "main": [
+        [
+          {
+            "node": "Social Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Social Research": {
+      "main": [
+        [
+          {
+            "node": "Merge Research",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Research": {
+      "main": [
+        [
+          {
+            "node": "Combine Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Research": {
+      "main": [
+        [
+          {
+            "node": "Build Stage2 Bodies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Stage2 Bodies": {
+      "main": [
+        [
+          {
+            "node": "GPT Stage2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gemini Stage2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Claude Stage2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Grok Stage2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Stage2": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Stage2": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Claude Stage2": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage2",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Grok Stage2": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage2",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Stage2": {
+      "main": [
+        [
+          {
+            "node": "Build Stage3 Bodies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Stage3 Bodies": {
+      "main": [
+        [
+          {
+            "node": "GPT Stage3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gemini Stage3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Claude Stage3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Grok Stage3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT Stage3": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Stage3": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Claude Stage3": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage3",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Grok Stage3": {
+      "main": [
+        [
+          {
+            "node": "Merge Stage3",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Stage3": {
+      "main": [
+        [
+          {
+            "node": "Build Stage4 Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Stage4 Body": {
+      "main": [
+        [
+          {
+            "node": "Stage4 Aggregation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage4 Aggregation": {
+      "main": [
+        [
+          {
+            "node": "Format Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Result": {
+      "main": [
+        [
+          {
+            "node": "Send Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Format": {
+      "main": [
+        [
+          {
+            "node": "Send Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner" }
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  }
 }
