@@ -149,3 +149,19 @@
 [georgetown/city-services-agent]: When swapping a node type via PUT /workflows/{id}, match the `typeVersion` exactly to another working node of the same type already in the workflow. Mismatched typeVersion (e.g. 2.1 vs 2.2 for Gmail) causes "could not be started" activation errors with no clear error message.
 
 [georgetown/city-services-agent]: When updating a Code node's output fields, audit ALL downstream nodes that reference those fields before saving. Removing a field (e.g. `citizen_email`) breaks every node that references it, even nodes not directly connected to the Code node.
+
+63. - [nash-satoshi/token-analysis]: **MCP validator reports false positives for Merge node input counts** — when a Merge node uses `numberInputs: 4`, the validator still reports "exceeds its input count (2)" for connections targeting inputs 2 and 3. These are safe to ignore — the `numberInputs` parameter dynamically expands inputs at runtime. The workflow activates and executes correctly despite these validation errors.
+
+64. - [nash-satoshi/token-analysis]: **For IF node reconvergence without a Merge node, connect both branch outputs to the same downstream node(s)** — instead of using a Merge node after an IF branch (which would hang waiting for the inactive branch), connect both true-branch and false-branch end nodes directly to the same downstream node at input 0. Only one branch fires, so the downstream node receives exactly one item. This avoids the need for Merge "chooseBranch" mode.
+
+65. - [nash-satoshi/token-analysis]: **`n8n_update_partial_workflow` uses `updates` not `properties`** — the correct structure is `{type: "updateNode", nodeName: "My Node", updates: {"parameters.jsCode": "..."}}`. Using `properties` instead of `updates` causes "Missing required parameter 'updates'" error.
+
+66. - [nash-satoshi/token-analysis]: **For multi-stage LLM pipelines, `responseMode: "onReceived"` is essential** — webhook should respond immediately (202 Accepted) because the full pipeline (research + 4-LLM analysis + deliberation + aggregation) takes several minutes. The caller gets an immediate response; results are sent back via callback webhook when complete.
+
+67. - [nash-satoshi/token-analysis]: **Reuse existing n8n credentials by ID** — instead of creating new credentials or hardcoding API keys, reference existing credentials: `credentials: {"httpHeaderAuth": {"id": "eKuUbdByJmAQfvxu", "name": "OpenRouter Header Auth"}}`. Check working workflows for credential IDs.
+
+68. - [nash-satoshi/token-analysis]: **Multi-stage LLM pipelines (10+ API calls) take ~4 minutes, not seconds** — webhook-triggered executions that appear "stuck" with 0 nodes may simply be running. The n8n execution API shows `status: "running"` and `executedNodes: 0` while early nodes execute. Check back after 3-5 minutes before debugging. Both test executions completed successfully with all 27 nodes in ~255 seconds.
+
+69. - [nash-satoshi/token-analysis]: **`jsonBody: "={{ $json.requestBody }}"` (no JSON.stringify) works for passing OpenRouter API bodies** — Code nodes output `{ requestBody: { model: '...', messages: [...] } }` and HTTP Request nodes reference it directly. This matches the Glow Index pattern and avoids double-serialization issues. The `specifyBody: "json"` mode handles serialization automatically.
+
+70. - [nash-satoshi/token-analysis]: **32-node 4-LLM ensemble workflow architecture**: Webhook → Extract → IF(source) → CoinGecko|DexScreener → Parse → parallel(Fund Research + Social Research) → Merge → Combine → Build S2 → 4x parallel LLM → Merge → Build S3 → 4x parallel LLM → Merge → Build S4 → Aggregation → Format → Send. Error Trigger → Error Format → Send Failure. This is the largest working n8n workflow built via API — 32 nodes, 30 connections, 10 LLM calls per execution.
