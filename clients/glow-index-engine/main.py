@@ -19,11 +19,24 @@ from pipeline import stage1_collect, stage2_analyze, stage3_deliberate, stage4_a
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Track running analyses: runId -> {started_at, product_id, callback_url, callback_secret}
+# Track running analyses: runId -> {started_at, product_id, callback_url, callback_secret, stage, stage_name}
 running_analyses: dict[str, dict] = {}
 
+STAGE_NAMES = {
+    1: "Collecting research data",
+    2: "Running 4-model analysis",
+    3: "Cross-model deliberation",
+    4: "Computing consensus score",
+}
+
+def _set_stage(run_id: str, stage: int):
+    if run_id in running_analyses:
+        running_analyses[run_id]["stage"] = stage
+        running_analyses[run_id]["stage_name"] = STAGE_NAMES.get(stage, "Processing")
+        running_analyses[run_id]["stage_started_at"] = time.time()
+
 # Background task for auto-timeout
-_timeout_task: asyncio.Task | None = None
+_timeout_task: object = None
 
 
 async def _timeout_poller():
@@ -88,8 +101,13 @@ async def analyze(req: AnalyzeRequest):
     running_analyses[run_id] = {
         "started_at": time.time(),
         "product_id": req.productId,
+        "product_name": req.productName,
+        "brand": req.brand,
         "callback_url": req.callbackUrl,
         "callback_secret": req.callbackSecret,
+        "stage": 0,
+        "stage_name": "Starting",
+        "stage_started_at": time.time(),
     }
 
     # Launch background task
@@ -114,19 +132,23 @@ async def _run_pipeline(run_id: str, req: AnalyzeRequest):
 
     try:
         # Stage 1: Brave data collection
+        _set_stage(run_id, 1)
         logger.info(f"[{run_id}] Stage 1: Collecting research data for {req.productName} by {req.brand}")
         collection = await stage1_collect.run(req.productName, req.brand)
         research_data = collection["research_data"]
 
         # Stage 2: 4 parallel LLM calls
+        _set_stage(run_id, 2)
         logger.info(f"[{run_id}] Stage 2: Running 4 LLM analyses")
         s2_results = await stage2_analyze.run(product, research_data)
 
         # Stage 3: Cross-review deliberation
+        _set_stage(run_id, 3)
         logger.info(f"[{run_id}] Stage 3: Running deliberation")
         s3_results = await stage3_deliberate.run(product, s2_results)
 
         # Stage 4: Consensus aggregation
+        _set_stage(run_id, 4)
         logger.info(f"[{run_id}] Stage 4: Computing consensus")
         aggregated = stage4_aggregate.run(s2_results, s3_results, product)
 
@@ -183,13 +205,19 @@ async def force_reset(run_id: str):
 
 @app.get("/status")
 async def status():
-    """List all running analyses."""
+    """List all running analyses with stage progress."""
     now = time.time()
     return {
         "running": {
             run_id: {
                 "product_id": info["product_id"],
+                "product_name": info.get("product_name", ""),
+                "brand": info.get("brand", ""),
+                "stage": info.get("stage", 0),
+                "stage_name": info.get("stage_name", "Starting"),
+                "total_stages": 4,
                 "elapsed_seconds": round(now - info["started_at"], 1),
+                "stage_elapsed_seconds": round(now - info.get("stage_started_at", info["started_at"]), 1),
             }
             for run_id, info in running_analyses.items()
         },

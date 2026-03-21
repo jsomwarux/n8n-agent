@@ -56,7 +56,8 @@ async def _call_model(client: httpx.AsyncClient, model_key: str, prompt: str, at
     messages.append({"role": "user", "content": prompt})
 
     body = {"model": model_id, "max_tokens": LLM_MAX_TOKENS, "messages": messages}
-    if model_key in ("gpt", "gemini", "grok"):
+    # response_format json_object: only supported by OpenAI/Grok — NOT Gemini or Claude
+    if model_key in ("gpt", "grok"):
         body["response_format"] = {"type": "json_object"}
 
     try:
