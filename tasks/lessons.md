@@ -175,3 +175,9 @@
 74. - [nash-satoshi/token-analysis]: **n8n API POST /workflows creates duplicates on retry** — if the first POST succeeds but response parsing fails (e.g. control chars in Code node jsCode per lesson #26), subsequent retries create additional copies. Always list workflows after import and delete duplicates. The newest (latest createdAt) is the correct one.
 
 75. - [nash-satoshi/token-analysis]: **n8n API POST /workflows/\{id\}/activate uses POST not PATCH** — PATCH returns empty/malformed response. POST returns the full workflow with `"active": true`.
+
+76. - [nash-satoshi/token-analysis]: **n8n v2+ blocks `executeCommand` node by default** — activation fails with "Unrecognized node type: n8n-nodes-base.executeCommand". Root cause: n8n v2 added default `NODES_EXCLUDE` that blocks executeCommand and localFileTrigger for security. Fix: set `NODES_EXCLUDE='["n8n-nodes-base.localFileTrigger"]'` env var (removing executeCommand from blocklist) OR add `"nodes": { "exclude": ["n8n-nodes-base.localFileTrigger"] }` to `~/.n8n/config`. Requires n8n restart. Source: community.n8n.io/t/234260.
+
+77. - [nash-satoshi/token-analysis]: **n8n API key lives in `user_api_keys` table, not `user`** — in n8n 2.12.x, `sqlite3 ~/.n8n/database.sqlite "SELECT apiKey FROM user_api_keys LIMIT 1;"` (not `SELECT apiKey FROM user`).
+
+78. - [nash-satoshi/token-analysis]: **Deactivate before deleting n8n workflows via API** — `DELETE /api/v1/workflows/{id}` may silently fail if the workflow is active. Always `POST /workflows/{id}/deactivate` first, then delete.
