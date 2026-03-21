@@ -189,3 +189,29 @@
 81. - [glow-index/skincare-analysis-v2]: **ALL OpenRouter responses use `choices[0].message.content`** — regardless of which model (Claude, GPT, Gemini, Grok). The old n8n workflow used model-specific extractors (content[0].text for Claude, candidates[0].content.parts[0].text for Gemini) but OpenRouter normalizes all responses to the OpenAI format. Never use Anthropic or Google native response formats when going through OpenRouter.
 
 82. - [glow-index/skincare-analysis-v2]: **BRAVE_API_KEY is stored as an n8n `$env` variable, not in ~/.config/env/global.env.** When moving Brave search calls from n8n to Python, the key needs to be added to global.env manually. The Nash Satoshi workflow references it as `={{ $env.BRAVE_API_KEY }}` which only works inside n8n expression context.
+
+## Ensemble Pipeline Builds
+
+**glow-index/nash-satoshi: Always verify model IDs on OpenRouter before hardcoding.**
+OpenRouter model IDs use dot separators (claude-sonnet-4.6, claude-opus-4.6), NOT hyphens (claude-sonnet-4-6). GPT-5 and GPT-5.4 do not exist on OpenRouter — use openai/o3 for max OpenAI intelligence. Always run `curl openrouter.ai/api/v1/models | grep <provider>` before finalizing model config.
+
+**glow-index/nash-satoshi: n8n Code nodes cannot use fetch() or $env.VARIABLE — use specific alternatives.**
+- HTTP calls from Code nodes: use `this.helpers.httpRequest({method, url, headers, body})` not fetch()
+- Environment variables: blocked by default in Code nodes. Hardcode API keys directly OR use n8n Credential Manager for native nodes (HTTP Request node with auth configured)
+- localhost vs 127.0.0.1: n8n may resolve localhost as IPv6 (::1) while uvicorn listens on IPv4. Always use 127.0.0.1 explicitly.
+
+**glow-index/nash-satoshi: Validate the callback endpoint exists and accepts unauthenticated test requests before assuming 404 = missing route.**
+The Glow Index callback returned 404 because the secret didn't match (intentional — wrong secret = 404). A 404 from a secret-protected route looks identical to a missing route. Test with the correct secret before debugging the route itself.
+
+**glow-index: Python FastAPI engine on Mac mini requires nohup + log redirect for persistence.**
+Running uvicorn from terminal means it dies when the terminal closes. Use:
+`nohup python3 -m uvicorn main:app --port 8001 --host 127.0.0.1 > /tmp/glow-engine.log 2>&1 &`
+Then set up a LaunchAgent after end-to-end flow is confirmed. Log file at /tmp/glow-engine.log is critical for diagnosing silent failures.
+
+**glow-index/nash-satoshi: Model cost optimization for ensemble pipelines (confirmed March 2026).**
+Best intelligence-per-dollar on OpenRouter:
+- OpenAI: openai/o3 ($2/$8 per M) — better than gpt-4.1, same price. NOT gpt-5 (doesn't exist).
+- Google: google/gemini-2.5-pro ($1.25/$10 per M) — cheaper than gemini-3.1-pro-preview ($2/$12), confirmed available.
+- Anthropic: anthropic/claude-sonnet-4.6 ($3/$15 per M) — use dot separator, not hyphen.
+- xAI: x-ai/grok-4 ($3/$15 per M) — confirmed available and correct.
+Cost per ensemble analysis with these models: ~$0.75-0.80 (13 LLM calls, ~31k max output tokens).
