@@ -31,17 +31,22 @@ def parse_llm_json(raw_text: str, model_key: str) -> dict:
 
 
 def validate_score(parsed: dict, model_key: str) -> bool:
-    """Validate that total score is a float in 0-100 range."""
+    """Validate that base_score is a float in 0-100 range.
+
+    Prompts now use base_score (no modifiers). Accept base_score or total as fallback
+    for backwards compatibility with any cached responses.
+    """
     if not parsed:
         return False
-    total = parsed.get("total")
-    if total is None:
-        logger.warning(f"{model_key}: missing 'total' field")
+    # Prefer base_score (new prompts), fall back to total (old prompts)
+    score = parsed.get("base_score") if parsed.get("base_score") is not None else parsed.get("total")
+    if score is None:
+        logger.warning(f"{model_key}: missing 'base_score' field")
         return False
     try:
-        val = float(total)
+        val = float(score)
     except (TypeError, ValueError):
-        logger.warning(f"{model_key}: 'total' is not numeric: {total}")
+        logger.warning(f"{model_key}: 'base_score' is not numeric: {score}")
         return False
     if not (0.0 <= val <= 100.0):
         logger.warning(f"{model_key}: score {val} out of range 0-100")

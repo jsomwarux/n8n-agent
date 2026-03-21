@@ -52,7 +52,7 @@ async def _call_model(client: httpx.AsyncClient, model_key: str, prompt: str, at
 
     messages = []
     if model_key in ("grok", "gpt", "gemini"):
-        messages.append({"role": "system", "content": "You are the Apex Skincare Intelligence Analyst doing Stage 2 consensus. Return ONLY valid JSON."})
+        messages.append({"role": "system", "content": "You are a senior skincare analyst doing cross-model deliberation. Return ONLY valid JSON, no markdown fences."})
     messages.append({"role": "user", "content": prompt})
 
     body = {"model": model_id, "max_tokens": LLM_MAX_TOKENS, "messages": messages}
@@ -78,7 +78,8 @@ async def _call_model(client: httpx.AsyncClient, model_key: str, prompt: str, at
 
         parsed = parse_llm_json(raw_text, model_key)
         if parsed and validate_score(parsed, model_key):
-            logger.info(f"Stage 3 {display_name}: revised_score={parsed.get('total')}")
+            score = parsed.get("base_score") or parsed.get("total")
+            logger.info(f"Stage 3 {display_name}: score={score}, tier={parsed.get('tier')}, verdict={parsed.get('consumer_verdict')}")
             return {"model_key": model_key, "raw_text": raw_text, "parsed": parsed, "error": None}
         else:
             return {"model_key": model_key, "raw_text": raw_text, "parsed": parsed, "error": "Invalid score or parse failure"}
