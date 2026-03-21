@@ -26,15 +26,15 @@ BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 MODELS = {
     "claude": "anthropic/claude-sonnet-4.6",
     "gpt": "openai/o3",
-    "gemini": "google/gemini-2.5-pro",
-    "grok": "x-ai/grok-4",
+    "gemini": "google/gemini-3.1-pro-preview",
+    "grok": "x-ai/grok-4.20-beta",
 }
 
 MODEL_DISPLAY_NAMES = {
     "claude": "Claude Sonnet 4.6",
-    "gpt": "GPT-5",
+    "gpt": "o3",
     "gemini": "Gemini 3.1 Pro",
-    "grok": "Grok 4",
+    "grok": "Grok 4.20",
 }
 
 LLM_TIMEOUT = 120  # seconds per model call
