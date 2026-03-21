@@ -223,3 +223,6 @@ When `specifyBody: "json"` and the `jsonBody` field contains `={{ JSON.stringify
 
 **glow-index: validate the full data chain whenever you change a prompt's output schema.**
 When prompts were rewritten to output `base_score` instead of `total`, the validators still checked `total`, stage4 still read `total`, and the frontend verdict component still expected old crypto string values ("CONSUMER WINS"). The system didn't error — it silently produced NaN scores and blank verdicts. Rule: changing a prompt field name requires updating validators.py, stage4_aggregate.py, callback payload, and frontend types simultaneously, not one at a time.
+
+**glow-index: prompt for structured output fields, not free-form reasoning, when frontend needs to display specific data.**
+Frontend components were extracting pros, cons, quick takes, and dupe recommendations from raw LLM reasoning text using regex. This produces inconsistent results across models and misses data when phrasing varies. The correct pattern: add explicit structured fields to the prompt output schema (key_findings, red_flags, quick_take, best_dupe) and pass them through the callback payload. Frontend reads fields directly — no regex scraping needed.
