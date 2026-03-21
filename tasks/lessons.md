@@ -216,14 +216,7 @@ Best intelligence-per-dollar on OpenRouter:
 - xAI: x-ai/grok-4 ($3/$15 per M) — confirmed available and correct.
 Cost per ensemble analysis with these models: ~$0.75-0.80 (13 LLM calls, ~31k max output tokens).
 
-**glow-index: Python 3.9 does not support X | None union type hints at runtime.**
-`asyncio.Semaphore | None = None` throws `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'` on Python 3.9. Use `object = None` or `Optional[asyncio.Semaphore] = None` instead. This applies to ALL runtime type annotations with `|` — only safe in Python 3.10+. Mac mini runs 3.9 — always use `Optional[X]` from `typing` or plain `object` for any variable that can be None.
-
-**glow-index: google/gemini-3.1-pro-preview rejects response_format: {"type": "json_object"} via OpenRouter.**
-Gemini models do not support the OpenAI-style `response_format` parameter through OpenRouter. Passing it causes the model to return `finish_reason: "length"` with content `"OK"` — a silent failure that looks like a truncation but is actually a rejected parameter. Fix: remove `response_format` from Gemini calls entirely. Only OpenAI models (o3, gpt-*) support this parameter via OpenRouter.
-
 **glow-index: n8n HTTP Request jsonBody double-serialization bug with specifyBody: "json".**
 When `specifyBody: "json"` and the `jsonBody` field contains `={{ JSON.stringify($json.payload) }}`, n8n double-serializes — the string result gets wrapped in another JSON object, sending malformed body to the target API. Fix: switch to `contentType: "raw"`, `rawContentType: "application/json"`, and set `body` to the stringify expression. This sends the raw string directly without n8n re-wrapping it.
 
-**glow-index: asyncio.Semaphore is the correct pattern for concurrency control in Python FastAPI background tasks.**
-For bulk analysis queues (e.g. 20+ products analyzed back-to-back): create a semaphore at startup in the lifespan context manager, wrap each pipeline run in `async with semaphore`, push incoming requests to a FIFO list, spawn a queue worker task on each `/analyze` call. The worker pops from the list inside the semaphore context — this ensures max N pipelines run at once with zero dropped requests. Set MAX_CONCURRENT = 2 by default; only increase to 3 if OpenRouter rate limits are not being hit.
+> For Python engine lessons (asyncio, OpenRouter model IDs, Gemini response_format, Python 3.9 types): see docs/agents/ensemble-build-lessons.md
