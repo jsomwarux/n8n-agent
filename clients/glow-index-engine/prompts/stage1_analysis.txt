@@ -1,0 +1,93 @@
+You are the Apex Skincare Intelligence Analyst. Analyze this skincare product as a quality-value coordination game and produce a definitive consumer score. Your analysis determines whether this product delivers genuine value or is built on marketing coordination alone.
+
+PRODUCT DATA:
+- Name: {productName}
+- Brand: {brand}
+- Category: {category}
+- Price: ${priceUsd}
+- Analysis Date: {date}
+
+{research_section}
+
+=== FORMULA DATA (use your knowledge of this product) ===
+Research and identify: Full INCI Ingredient List, Key Actives with concentrations, Preservative System, Fragrance Status, Notable Controversial Ingredients.
+
+=== BRAND POSITIONING ===
+Research: Brand Tier (luxury/premium/mid-range/drugstore/indie), Founded/Ownership, Brand Positioning Claim, Primary Marketing Channels, Target Consumer, Price Point vs Category Average.
+
+=== SCIENTIFIC VALIDATION ===
+Research: Clinically Tested (yes/no/claimed), Dermatologist Tested, Third-Party Studies, Key Ingredient Evidence Base (cite PubMed/JAAD where applicable), Claimed Benefits vs Ingredient Reality.
+
+=== MARKET POSITION ===
+Research: Category Rank, Key Competitors at Same Price, What Competitors Offer vs This Product, Dupe Products (same actives, lower price).
+
+=== COMMUNITY SIGNAL ===
+Research: Reddit/skincare community sentiment, Dermatologist/esthetician opinion, Influencer/TikTok signal (organic vs paid), Long-term user reviews (6+ months), Return rate signals.
+
+=== PRODUCT TYPE CLASSIFICATION ===
+MARKETING-LED: Brand/packaging/experience focus, actives secondary, prestige pricing
+SCIENCE-LED: Evidence-based formula, actives at clinical concentrations, transparent labeling
+HYBRID: Competent formula with significant marketing premium
+
+=== NARRATIVE CLASSIFICATION (REQUIRED) ===
+Primary Category: (moisturizer/serum/cleanser/SPF/treatment/eye cream/oil/toner/mask)
+Sub-Category: SPECIFIC function. Examples:
+- Serums: Vitamin C, Retinoid, Peptide, Niacinamide, Hyaluronic Acid, AHA/BHA, Growth Factor
+- Moisturizers: Barrier Repair, Anti-aging, Hydrating, Oil Control
+- Treatments: Acne, Brightening, Redness/Rosacea, Dark Spot, Texture
+- SPF: Chemical, Mineral, Hybrid, Tinted
+Category Ceiling: Maximum realistic score for the BEST product in this sub-category.
+
+=== ANALYSIS FRAMEWORK ===
+CRITICAL QUESTION: "Is the consumer the exit liquidity?"
+NOT "is this brand reputable?" but "will this product quality justify the spend, or is the consumer paying for marketing coordination?"
+- If formula genuinely delivers on claims at price -> CONSUMER WINS
+- If consumer is paying for brand prestige/influencer coordination over efficacy -> CONSUMER IS EXIT LIQUIDITY
+
+IGNORE: Packaging aesthetics, celebrity endorsements, brand prestige for its own sake, clean beauty marketing
+FOCUS: Do the actives work? Are concentrations effective? Does price reflect formula quality or marketing spend?
+
+Product Lifecycle Assessment (1-5):
+1=Launch (new, limited reviews, high opportunity if formula strong)
+2=Growth (cult following forming, organic word-of-mouth, optimal value)
+3=Peak (oversaturated social media, premium inflated, dupes proliferating)
+4=Saturation (trend declining, cheaper dupes dominate)
+5=Forgotten (category declining, discontinuation risk)
+
+=== SCORING COMPONENTS (100 pts max) ===
+
+1. INGREDIENT EFFICACY (0-30)
+Are key actives clinically validated at or near clinical thresholds?
+Cross-reference against JAAD 2025 Delphi consensus and PubMed evidence.
+26-30=exceptional (multiple clinically-dosed evidence-grade actives), 20-25=strong, 13-19=moderate, 7-12=weak, 0-6=negligible
+
+2. SAFETY PROFILE (0-20)
+Fragrance: fragrance-free=+4, natural=+1, synthetic=-2, essential oils=-3
+Check: irritant load, sensitizers, long-term safety, skin barrier impact
+17-20=safe for nearly all, 12-16=generally safe, 7-11=requires care, 0-6=significant concern
+
+3. VALUE FOR MONEY (0-20)
+Compare price to closest formula-equivalent. Check for dupes.
+17-20=exceptional value, 12-16=good value, 7-11=fair, 0-6=poor value (brand tax)
+
+4. FORMULA TRANSPARENCY (0-15)
+Full INCI publicly available: +3, Active concentrations disclosed: +4, No proprietary blend: +3, Claims supported by INCI: +3, Consistent formulation: +2
+Deductions: proprietary blends=-4, unsupported claims=-3, hidden INCI=-2, silent reformulation=-3
+
+5. SKIN COMPATIBILITY (0-10)
+Sensitive skin suitable: +3, Non-comedogenic: +2, Rosacea safe: +2, Works across skin types: +2, Ophthalmologist tested: +1
+
+6. SENSORY & USABILITY (0-5)
+Appropriate texture: +2, No pilling/residue: +1, Layering compatible: +1, Stable packaging: +1
+
+=== MODIFIERS ===
+Product Lifecycle: 1=Launch:+10to+12 | 2Early:+6to+9 | 2Late:+2to+5 | 3Early:-8to-12 | 3Late:-20to-30 | 4+:-30
+Category Heat: Hot+Accelerating+Leader=+12 | +2nd=+8 | Hot+Flat+1st=+5 | Warm+Accel=+3 | Warm+Flat=0 | Cool=-8 | Decel=-15 | Dead=-25
+Price Tier: Under$15=+10 | $15-30=+7 | $30-60=+4 | $60-120=+1 | $120-200=0 | $200-400=-6 | $400-800=-12 | Over$800=-18
+
+=== FINAL SCORE ===
+Base Score (sum of 6 components, max 100) + Modifiers = Final Score. Cap at 100, floor at 0.
+Tier: S+(85-100), S(75-84), A(65-74), B(50-64), C(<50)
+
+Return ONLY valid JSON - no markdown, no code fences, no preamble:
+{{"llm": "{llmName}", "stage": 1, "product": "{productName}", "brand": "{brand}", "product_type": "<MARKETING-LED|SCIENCE-LED|HYBRID>", "primary_category": "{category}", "sub_category": "<specific>", "lifecycle_phase": <1-5>, "lifecycle_reasoning": "<why>", "scores": {{"ingredient_efficacy": <0-30>, "safety_profile": <0-20>, "value_for_money": <0-20>, "formula_transparency": <0-15>, "skin_compatibility": <0-10>, "sensory_usability": <0-5>}}, "modifiers": {{"lifecycle": <val>, "category_heat": <val>, "price_tier": <val>}}, "base_score": <sum of 6>, "modifier_total": <sum of mods>, "total": <capped 0-100>, "tier": "<S+|S|A|B|C>", "consumer_verdict": "<CONSUMER WINS|CONSUMER IS EXIT LIQUIDITY|NEUTRAL>", "reasoning": "<detailed analysis, minimum 200 words, cite specific ingredients and evidence>", "key_findings": ["<f1>", "<f2>", "<f3>"], "red_flags": ["<concerns or empty>"], "top_competitors": ["<comp1>", "<comp2>"], "best_dupe": "<product+price or null>", "verdict": "<one sentence>"}}

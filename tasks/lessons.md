@@ -181,3 +181,11 @@
 77. - [nash-satoshi/token-analysis]: **n8n API key lives in `user_api_keys` table, not `user`** — in n8n 2.12.x, `sqlite3 ~/.n8n/database.sqlite "SELECT apiKey FROM user_api_keys LIMIT 1;"` (not `SELECT apiKey FROM user`).
 
 78. - [nash-satoshi/token-analysis]: **Deactivate before deleting n8n workflows via API** — `DELETE /api/v1/workflows/{id}` may silently fail if the workflow is active. Always `POST /workflows/{id}/deactivate` first, then delete.
+
+79. - [glow-index/skincare-analysis-v2]: **Ensemble build rules: n8n = thin wrapper (max 7 nodes), Python FastAPI = all logic.** Moving LLM calls, prompt management, retry/fallback, and aggregation out of n8n Code nodes into a Python FastAPI engine eliminates: n8n sandbox restrictions (no require/fetch/axios), Code node `}}` false-positive validation errors, and the 20+ node complexity of in-n8n ensemble workflows. Pattern: Webhook → Validate → HTTP POST to Python engine → Log Status. Python engine runs as a background service (uvicorn) and handles all async LLM calls with proper asyncio.gather parallelism.
+
+80. - [glow-index/skincare-analysis-v2]: **Store prompts as .txt files in prompts/ dir — never inline.** Assert `len(prompt) > 500` before every LLM call. Prompt templates use Python `str.format()` with named placeholders `{productName}`, `{brand}`, etc. This makes prompts version-controllable and prevents accidental truncation.
+
+81. - [glow-index/skincare-analysis-v2]: **ALL OpenRouter responses use `choices[0].message.content`** — regardless of which model (Claude, GPT, Gemini, Grok). The old n8n workflow used model-specific extractors (content[0].text for Claude, candidates[0].content.parts[0].text for Gemini) but OpenRouter normalizes all responses to the OpenAI format. Never use Anthropic or Google native response formats when going through OpenRouter.
+
+82. - [glow-index/skincare-analysis-v2]: **BRAVE_API_KEY is stored as an n8n `$env` variable, not in ~/.config/env/global.env.** When moving Brave search calls from n8n to Python, the key needs to be added to global.env manually. The Nash Satoshi workflow references it as `={{ $env.BRAVE_API_KEY }}` which only works inside n8n expression context.
