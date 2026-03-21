@@ -7,7 +7,7 @@ import re
 logger = logging.getLogger(__name__)
 
 
-def parse_llm_json(raw_text: str, model_key: str) -> dict | None:
+def parse_llm_json(raw_text: str, model_key: str) -> dict:
     """Parse JSON from LLM response text. Handles markdown fences and extra content."""
     if not raw_text:
         return None
@@ -49,13 +49,13 @@ def validate_score(parsed: dict, model_key: str) -> bool:
     return True
 
 
-def validate_stage2_minimum(results: dict[str, dict | None]) -> bool:
+def validate_stage2_minimum(results: dict) -> bool:
     """Check that at least 3 models produced valid Stage 2 results."""
     valid_count = sum(1 for v in results.values() if v is not None and validate_score(v, "s2"))
     return valid_count >= 3
 
 
-def extract_openrouter_content(response_json: dict) -> str | None:
+def extract_openrouter_content(response_json: dict) -> str:
     """Extract content from OpenRouter response. ALL models use choices[0].message.content."""
     try:
         return response_json["choices"][0]["message"]["content"]

@@ -13,11 +13,14 @@ else:
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
+FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY", "")
 
 if not OPENROUTER_API_KEY:
     raise RuntimeError("OPENROUTER_API_KEY not set in global.env")
 if not BRAVE_API_KEY:
     raise RuntimeError("BRAVE_API_KEY not set in global.env — add it to ~/.config/env/global.env")
+if not FIRECRAWL_API_KEY:
+    raise RuntimeError("FIRECRAWL_API_KEY not set in global.env — add it to ~/.config/env/global.env")
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"

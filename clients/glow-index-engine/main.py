@@ -27,7 +27,7 @@ running_analyses: dict[str, dict] = {}
 analysis_queue: list[tuple[str, object]] = []
 
 # Semaphore: max MAX_CONCURRENT_ANALYSES pipelines running at once
-_pipeline_semaphore: asyncio.Semaphore | None = None
+_pipeline_semaphore: object = None  # asyncio.Semaphore, set at startup
 
 STAGE_NAMES = {
     1: "Collecting research data",
@@ -105,20 +105,7 @@ async def analyze(req: AnalyzeRequest):
     """Accept analysis request, run pipeline in background, return immediately."""
     run_id = req.runId or str(uuid.uuid4())
 
-    # Register in running_analyses
-    running_analyses[run_id] = {
-        "started_at": time.time(),
-        "product_id": req.productId,
-        "product_name": req.productName,
-        "brand": req.brand,
-        "callback_url": req.callbackUrl,
-        "callback_secret": req.callbackSecret,
-        "stage": 0,
-        "stage_name": "Starting",
-        "stage_started_at": time.time(),
-    }
-
-    # Push to queue — worker picks it up when a slot is free
+    # Push to queue ONLY — don't register in running_analyses until pipeline actually starts
     analysis_queue.append((run_id, req))
     asyncio.create_task(_queue_worker())
 
@@ -144,6 +131,19 @@ async def _queue_worker():
 
 async def _run_pipeline(run_id: str, req: AnalyzeRequest):
     """Full pipeline: collect → analyze → deliberate → aggregate → callback."""
+    # Register NOW — pipeline is actually starting (semaphore acquired)
+    running_analyses[run_id] = {
+        "started_at": time.time(),
+        "product_id": req.productId,
+        "product_name": req.productName,
+        "brand": req.brand,
+        "callback_url": req.callbackUrl,
+        "callback_secret": req.callbackSecret,
+        "stage": 0,
+        "stage_name": "Starting",
+        "stage_started_at": time.time(),
+    }
+
     product = {
         "productId": req.productId,
         "productName": req.productName,
@@ -157,7 +157,7 @@ async def _run_pipeline(run_id: str, req: AnalyzeRequest):
         # Stage 1: Brave data collection
         _set_stage(run_id, 1)
         logger.info(f"[{run_id}] Stage 1: Collecting research data for {req.productName} by {req.brand}")
-        collection = await stage1_collect.run(req.productName, req.brand)
+        collection = await stage1_collect.run(req.productName, req.brand, price_usd=req.priceUsd)
         research_data = collection["research_data"]
 
         # Stage 2: 4 parallel LLM calls
