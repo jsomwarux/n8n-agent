@@ -70,9 +70,10 @@ async def _call_model(client: httpx.AsyncClient, model_key: str, prompt: str, at
 
         parsed = parse_llm_json(raw_text, model_key)
         if parsed and validate_score(parsed, model_key):
-            logger.info(f"Stage 2 {display_name}: score={parsed.get('total')}, tier={parsed.get('tier')}")
+            logger.info(f"Stage 2 {display_name}: score={parsed.get('base_score') or parsed.get('total')}, tier={parsed.get('tier')}")
             return {"model_key": model_key, "raw_text": raw_text, "parsed": parsed, "error": None}
         else:
+            logger.warning(f"Stage 2 {display_name}: parse/validate failed. raw preview: {(raw_text or '')[:300]}")
             return {"model_key": model_key, "raw_text": raw_text, "parsed": parsed, "error": "Invalid score or parse failure"}
 
     except httpx.TimeoutException:

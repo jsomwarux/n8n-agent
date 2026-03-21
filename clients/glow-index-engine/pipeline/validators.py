@@ -38,10 +38,18 @@ def validate_score(parsed: dict, model_key: str) -> bool:
     """
     if not parsed:
         return False
-    # Prefer base_score (new prompts), fall back to total (old prompts)
-    score = parsed.get("base_score") if parsed.get("base_score") is not None else parsed.get("total")
+    # Prefer base_score (new prompts), fall back to total, score, or overall_score
+    score = (
+        parsed.get("base_score")
+        if parsed.get("base_score") is not None
+        else parsed.get("total")
+        if parsed.get("total") is not None
+        else parsed.get("score")
+        if parsed.get("score") is not None
+        else parsed.get("overall_score")
+    )
     if score is None:
-        logger.warning(f"{model_key}: missing 'base_score' field")
+        logger.warning(f"{model_key}: no score field found. Keys present: {list(parsed.keys())[:10]}")
         return False
     try:
         val = float(score)
