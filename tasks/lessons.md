@@ -220,3 +220,6 @@ Cost per ensemble analysis with these models: ~$0.75-0.80 (13 LLM calls, ~31k ma
 When `specifyBody: "json"` and the `jsonBody` field contains `={{ JSON.stringify($json.payload) }}`, n8n double-serializes — the string result gets wrapped in another JSON object, sending malformed body to the target API. Fix: switch to `contentType: "raw"`, `rawContentType: "application/json"`, and set `body` to the stringify expression. This sends the raw string directly without n8n re-wrapping it.
 
 > For Python engine lessons (asyncio, OpenRouter model IDs, Gemini response_format, Python 3.9 types): see docs/agents/ensemble-build-lessons.md
+
+**glow-index: validate the full data chain whenever you change a prompt's output schema.**
+When prompts were rewritten to output `base_score` instead of `total`, the validators still checked `total`, stage4 still read `total`, and the frontend verdict component still expected old crypto string values ("CONSUMER WINS"). The system didn't error — it silently produced NaN scores and blank verdicts. Rule: changing a prompt field name requires updating validators.py, stage4_aggregate.py, callback payload, and frontend types simultaneously, not one at a time.
