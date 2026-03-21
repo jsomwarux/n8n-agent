@@ -40,3 +40,6 @@ MODEL_DISPLAY_NAMES = {
 LLM_TIMEOUT = 120  # seconds per model call
 LLM_MAX_TOKENS = 4096
 ANALYSIS_TIMEOUT_MINUTES = 10
+
+# Concurrency: max parallel pipelines before queuing
+MAX_CONCURRENT_ANALYSES = 2

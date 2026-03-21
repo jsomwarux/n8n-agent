@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 # Must import config first to validate env vars at startup
 import config  # noqa: F401
+from config import MAX_CONCURRENT_ANALYSES
 from callback import send_callback, send_failure_callback
 from pipeline import stage1_collect, stage2_analyze, stage3_deliberate, stage4_aggregate
 
@@ -21,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 # Track running analyses: runId -> {started_at, product_id, callback_url, callback_secret, stage, stage_name}
 running_analyses: dict[str, dict] = {}
+
+# Queue for pending analyses: list of (run_id, AnalyzeRequest)
+analysis_queue: list[tuple[str, object]] = []
+
+# Semaphore: max MAX_CONCURRENT_ANALYSES pipelines running at once
+_pipeline_semaphore: asyncio.Semaphore | None = None
 
 STAGE_NAMES = {
     1: "Collecting research data",
@@ -67,9 +74,10 @@ async def _timeout_poller():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _timeout_task
+    global _timeout_task, _pipeline_semaphore
+    _pipeline_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ANALYSES)
     _timeout_task = asyncio.create_task(_timeout_poller())
-    logger.info("Glow Index engine started — timeout poller active")
+    logger.info(f"Glow Index engine started — max {MAX_CONCURRENT_ANALYSES} concurrent analyses, timeout poller active")
     yield
     if _timeout_task:
         _timeout_task.cancel()
@@ -110,13 +118,28 @@ async def analyze(req: AnalyzeRequest):
         "stage_started_at": time.time(),
     }
 
-    # Launch background task
-    asyncio.create_task(_run_pipeline(run_id, req))
+    # Push to queue — worker picks it up when a slot is free
+    analysis_queue.append((run_id, req))
+    asyncio.create_task(_queue_worker())
 
+    queue_pos = len(analysis_queue)
+    active = len(running_analyses)
+    msg = "Analysis pipeline started" if active < MAX_CONCURRENT_ANALYSES else f"Queued (position {queue_pos}, {active} running)"
     return JSONResponse(
         status_code=202,
-        content={"status": "accepted", "runId": run_id, "message": "Analysis pipeline started"},
+        content={"status": "accepted", "runId": run_id, "message": msg, "queuePosition": queue_pos},
     )
+
+
+async def _queue_worker():
+    """Drain the queue one item at a time, respecting the semaphore."""
+    if not analysis_queue:
+        return
+    async with _pipeline_semaphore:
+        if not analysis_queue:
+            return
+        run_id, req = analysis_queue.pop(0)
+        await _run_pipeline(run_id, req)
 
 
 async def _run_pipeline(run_id: str, req: AnalyzeRequest):
@@ -222,6 +245,12 @@ async def status():
             for run_id, info in running_analyses.items()
         },
         "count": len(running_analyses),
+        "queued": len(analysis_queue),
+        "max_concurrent": MAX_CONCURRENT_ANALYSES,
+        "queue": [
+            {"runId": rid, "product_name": r.productName, "brand": r.brand}
+            for rid, r in analysis_queue
+        ],
     }
 
 
