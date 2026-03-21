@@ -42,9 +42,9 @@ async def _call_model(client: httpx.AsyncClient, model_key: str, prompt: str, at
     messages = []
     # Grok MUST have a system message or it refuses
     if model_key == "grok":
-        messages.append({"role": "system", "content": "You are the Apex Skincare Intelligence Analyst. Return ONLY valid JSON, no markdown fences."})
+        messages.append({"role": "system", "content": "You are a senior skincare analyst and cosmetic chemist. Return ONLY valid JSON, no markdown fences."})
     elif model_key in ("gpt", "gemini"):
-        messages.append({"role": "system", "content": "You are the Apex Skincare Intelligence Analyst. Return ONLY valid JSON, no markdown fences."})
+        messages.append({"role": "system", "content": "You are a senior skincare analyst and cosmetic chemist. Return ONLY valid JSON, no markdown fences."})
     messages.append({"role": "user", "content": prompt})
 
     body = {"model": model_id, "max_tokens": LLM_MAX_TOKENS, "messages": messages}

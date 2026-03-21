@@ -77,18 +77,22 @@ def run(
         tier = "C"
 
     # Consumer verdict: majority vote from Stage 3 (or Stage 2 fallback)
+    # Valid values: BUY_IT, WORTH_IT_WITH_CAVEATS, SKIP_IT
+    VALID_VERDICTS = {"BUY_IT", "WORTH_IT_WITH_CAVEATS", "SKIP_IT"}
     verdicts = []
     for model_key in stage2_results:
         s3 = stage3_results.get(model_key, {})
         s2 = stage2_results.get(model_key, {})
         parsed = s3.get("parsed") if (s3.get("parsed") and not s3.get("error")) else s2.get("parsed")
         if parsed:
-            verdicts.append(parsed.get("consumer_verdict", "NEUTRAL"))
+            v = parsed.get("consumer_verdict", "")
+            if v in VALID_VERDICTS:
+                verdicts.append(v)
 
     verdict_counts: dict[str, int] = {}
     for v in verdicts:
         verdict_counts[v] = verdict_counts.get(v, 0) + 1
-    consumer_verdict = max(verdict_counts, key=verdict_counts.get) if verdict_counts else "NEUTRAL"
+    consumer_verdict = max(verdict_counts, key=verdict_counts.get) if verdict_counts else "WORTH_IT_WITH_CAVEATS"
 
     # Build analyses array for callback
     analyses = []
