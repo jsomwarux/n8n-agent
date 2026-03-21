@@ -25,7 +25,7 @@ BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 # Models via OpenRouter
 MODELS = {
     "claude": "anthropic/claude-sonnet-4-6",
-    "gpt": "openai/gpt-5",
+    "gpt": "openai/gpt-4.1",
     "gemini": "google/gemini-3.1-pro-preview",
     "grok": "x-ai/grok-4",
 }
