@@ -226,3 +226,6 @@ When prompts were rewritten to output `base_score` instead of `total`, the valid
 
 **glow-index: prompt for structured output fields, not free-form reasoning, when frontend needs to display specific data.**
 Frontend components were extracting pros, cons, quick takes, and dupe recommendations from raw LLM reasoning text using regex. This produces inconsistent results across models and misses data when phrasing varies. The correct pattern: add explicit structured fields to the prompt output schema (key_findings, red_flags, quick_take, best_dupe) and pass them through the callback payload. Frontend reads fields directly — no regex scraping needed.
+
+[glow-index-engine]: Tailscale Serve is tailnet-only — cloud services (Replit, external webhooks) CANNOT reach it. Use `tailscale funnel --bg --https=<PORT> <local-port>` for any endpoint that needs to be publicly reachable. Serve = private, Funnel = public internet.
+[glow-index-engine]: When Replit calls a webhook URL, it's calling from Cloudflare's servers, not from your tailnet. Always test with `curl` from a context outside your network before assuming a URL works.
