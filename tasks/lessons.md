@@ -229,3 +229,5 @@ Frontend components were extracting pros, cons, quick takes, and dupe recommenda
 
 [glow-index-engine]: Tailscale Serve is tailnet-only — cloud services (Replit, external webhooks) CANNOT reach it. Use `tailscale funnel --bg --https=<PORT> <local-port>` for any endpoint that needs to be publicly reachable. Serve = private, Funnel = public internet.
 [glow-index-engine]: When Replit calls a webhook URL, it's calling from Cloudflare's servers, not from your tailnet. Always test with `curl` from a context outside your network before assuming a URL works.
+
+[ranking-app-factory]: Nash Satoshi framing (game theory, coordination game, exit liquidity) must NEVER leak into other niche apps. When using a reference implementation as a template, strip all domain-specific analytical framing and keep only structural patterns (JSON schema, section headers, scoring rubrics). The meta-prompt for generate-prompts.ts must be domain-neutral — the only framing is "does this [entity] deliver genuine [outcome] relative to [cost/investment]?" Nash Satoshi is crypto-specific and must never be referenced in the prompt generator.
