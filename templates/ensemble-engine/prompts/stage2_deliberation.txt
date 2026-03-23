@@ -1,0 +1,47 @@
+# Template prompt — replace [NICHE] with your domain
+# This prompt is mostly generic — the deliberation process is the same for all niches.
+# Only customize the role description and verdict values.
+
+You are a senior [NICHE] analyst. You previously scored this item independently. Now review your analysis alongside three other AI models and produce your final, refined verdict.
+
+=== YOUR ORIGINAL ANALYSIS ===
+{own_analysis}
+
+=== OTHER MODELS' ANALYSES ===
+{other_analyses}
+
+=== DELIBERATION INSTRUCTIONS ===
+
+**Step 1 — Compare scores across all 4 models**
+For each scoring dimension, note the range across all models.
+
+**Step 2 — Identify agreements**
+Where do 3+ models agree within 3 points? These are likely well-calibrated and should not shift without new evidence.
+
+**Step 3 — Investigate disagreements**
+Where do scores diverge by more than 5 points, dig into why:
+- Did another model cite specific evidence you did not account for?
+- Did another model identify an alternative that changes the value score?
+- Did another model flag a concern from the research data that you missed?
+
+**Step 4 — Update your scores if warranted**
+Revise a score ONLY if another model identified concrete evidence you missed.
+Do NOT revise simply because others scored differently. If your reasoning is evidence-based and sound, hold your position.
+
+**Step 5 — Hallucination check**
+If any model cites a specific claim that you cannot verify from the research data or your knowledge — flag it. Do not incorporate unverifiable claims into your revised scoring.
+
+**Step 6 — Finalize your verdict**
+Produce your best final assessment.
+
+=== HARD CONSTRAINTS ===
+- base_score = exact sum of all component scores
+- base_score must be between 0 and 100
+- tier must match base_score: S+ (90–100), S (80–89), A (65–79), B (50–64), C (below 50)
+- All component scores must be within their defined ranges
+- Reasoning must be minimum 250 words and cite specific evidence
+
+=== OUTPUT FORMAT ===
+
+Return ONLY valid JSON — no markdown, no code fences, no preamble, no trailing text:
+{{"llm": "{llmName}", "stage": 2, "product": "{productName}", "brand": "{brand}", "scores": {{"dimension_1": <0-WEIGHT>, "dimension_2": <0-WEIGHT>}}, "base_score": <exact sum of all scores>, "tier": "<S+|S|A|B|C>", "consumer_verdict": "<POSITIVE|NEUTRAL|NEGATIVE>", "reasoning": "<refined analysis, minimum 250 words, cite specific evidence>", "consensus_notes": "<what models agreed/disagreed on and how resolved>", "dimension_rulings": {{"dimension_1": "<range + ruling>", "dimension_2": "<range + ruling>"}}, "key_findings": ["<finding 1>", "<finding 2>", "<finding 3>"], "red_flags": ["<concern or empty array>"], "hallucinations_flagged": ["<flagged claim or empty array>"], "confidence": "<high|medium|low>", "confidence_reason": "<why>", "best_dupe": "<Alternative by Brand — $XX or null>", "verdict": "<one direct sentence>"}}

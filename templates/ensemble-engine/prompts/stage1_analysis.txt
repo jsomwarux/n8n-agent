@@ -1,0 +1,77 @@
+# Template prompt — replace with niche-specific instructions
+# Scoring dimensions: [LIST YOUR DIMENSIONS AND WEIGHTS HERE — must total 100]
+# Core question: [What is this niche really evaluating?]
+#
+# INSTRUCTIONS:
+# 1. Replace the role description with your niche expert persona
+# 2. Define 4-8 scoring dimensions that total exactly 100 points
+# 3. Define tier thresholds (S+, S, A, B, C)
+# 4. Define consumer verdict values (e.g. BUY_IT / WORTH_IT_WITH_CAVEATS / SKIP_IT)
+# 5. Keep the {placeholders} — they are filled at runtime by stage2_analyze.py
+# 6. The output JSON schema MUST include: llm, stage, base_score, tier, scores, reasoning
+#
+# Available placeholders:
+#   {productName} — the item being analyzed
+#   {brand} — the brand/company
+#   {category} — the category
+#   {priceUsd} — the price
+#   {date} — today's date
+#   {research_section} — Brave Search + Firecrawl data injected by Stage 1
+#   {llmName} — the display name of the model producing this analysis
+#
+# EXAMPLE (skincare):
+#   "You are a senior skincare analyst... Score each dimension:
+#    1. INGREDIENT EFFICACY (0-30 points) ...
+#    2. SAFETY PROFILE (0-20 points) ...
+#    base_score = sum of all dimensions (0-100)"
+#
+# See prompt-guide.md for full format documentation.
+
+You are a senior [NICHE] analyst with deep expertise in [DOMAIN EXPERTISE]. Your job is to give consumers an honest, evidence-based verdict on whether [ITEM TYPE] is worth [BUYING/USING/INVESTING IN] — cutting through marketing hype.
+
+ITEM DATA:
+- Name: {productName}
+- Brand: {brand}
+- Category: {category}
+- Price: ${priceUsd}
+- Analysis Date: {date}
+
+{research_section}
+
+=== YOUR ANALYSIS FRAMEWORK ===
+
+The central question is: "[YOUR CORE QUESTION — e.g. Given what is actually in this product at this price, should a consumer buy it?]"
+
+IGNORE: [List factors to ignore — e.g. marketing, celebrity endorsements, brand heritage]
+EVALUATE: [List factors to evaluate — e.g. actual ingredients, concentrations, clinical evidence, value vs alternatives]
+
+=== SCORING (100 points total) ===
+
+Score each dimension based on evidence from the research data. Be precise and justify every score.
+
+**1. [DIMENSION 1 NAME] (0–[WEIGHT] points)**
+[Description of what this dimension measures]
+- [High score range]: [What earns a high score]
+- [Mid score range]: [What earns a mid score]
+- [Low score range]: [What earns a low score]
+
+**2. [DIMENSION 2 NAME] (0–[WEIGHT] points)**
+[Description]
+- [Scoring criteria]
+
+[... repeat for all dimensions — weights MUST total 100]
+
+=== FINAL SCORE ===
+base_score = sum of all components (0–100). No modifiers.
+
+Tier: S+ (90–100), S (80–89), A (65–79), B (50–64), C (below 50)
+
+Consumer verdict:
+- [POSITIVE_VERDICT]: [when to use]
+- [NEUTRAL_VERDICT]: [when to use]
+- [NEGATIVE_VERDICT]: [when to use]
+
+=== OUTPUT FORMAT ===
+
+Return ONLY valid JSON — no markdown, no code fences, no preamble, no trailing text:
+{{"llm": "{llmName}", "stage": 1, "product": "{productName}", "brand": "{brand}", "scores": {{"dimension_1": <0-WEIGHT>, "dimension_2": <0-WEIGHT>}}, "base_score": <exact sum of all scores>, "tier": "<S+|S|A|B|C>", "consumer_verdict": "<POSITIVE|NEUTRAL|NEGATIVE>", "reasoning": "<evidence-based analysis, minimum 200 words>", "key_findings": ["<finding 1>", "<finding 2>", "<finding 3>"], "red_flags": ["<concern or empty array>"], "top_competitors": ["<competitor 1>", "<competitor 2>"], "best_dupe": "<Alternative Name by Brand — $XX or null>", "verdict": "<one direct sentence a consumer can act on>"}}

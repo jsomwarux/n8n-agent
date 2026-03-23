@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openclaw.glow-index-engine</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jtsomwaru/projects/n8n-agent/clients/glow-index-engine</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>python3</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>main:app</string>
+        <string>--port</string>
+        <string>8001</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>X_BEARER_TOKEN</key>
+        <string>AAAAAAAAAAAAAAAAAAAAALcp7wEAAAAA5Ku%2FrgpUG3bISB2mgYtN0Szkzak%3Dp7brGXSjQjuy9ze9rjmYwHQDkgohZUb3nA7LmZzzR1CMe9WI9x</string>
+        <key>FIRECRAWL_API_KEY</key>
+        <string>fc-0d0961fa920a466a869fdd4068b9fe7e</string>
+        <key>N8N_API_URL</key>
+        <string>http://localhost:5678</string>
+        <key>N8N_API_KEY</key>
+        <string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzZGZjMzlkYS05NzJjLTQ2NTUtOWY5ZS1lNjJkMDE1NDA1ZDkiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOWIzZmJkZjgtYzkzMS00NjY2LWJlYWMtMjZiOTM1YTBjMjE1IiwiaWF0IjoxNzcxODEwMDA4fQ.-5OpQfa5LT5zkgH6oEOeVzoG_L0JsD9P35tS0D35C74</string>
+        <key>CF_ACCOUNT_ID</key>
+        <string>d29f302ff8177d710e3ee1fe7b1ac252</string>
+        <key>CF_API_TOKEN</key>
+        <string>n_slBvuHoHzldlIcXojdVGpGk3R3BeqngYzdKt3I</string>
+        <key>OPENAI_API_KEY</key>
+        <string>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</string>
+        <key>OPENROUTER_API_KEY</key>
+        <string>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</string>
+        <key>BRAVE_API_KEY</key>
+        <string>BSAS6-uU27iqplByYLmLMzLt6WFFXGg</string>
+        <key>N8N_MCP_API_KEY</key>
+        <string>nmcp_0aa58e45bf16150c09302fb9c574e5c202a7bba9a0bcdbeba0faf01d1255e8fc</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/glow-engine.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/glow-engine.log</string>
+</dict>
+</plist>
