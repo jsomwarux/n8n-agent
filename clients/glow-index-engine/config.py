@@ -42,6 +42,16 @@ MODEL_DISPLAY_NAMES = {
 
 LLM_TIMEOUT = 120  # seconds per model call
 LLM_MAX_TOKENS = 4096
+
+# Gemini thinking mode consumes max_tokens for its reasoning chain BEFORE output.
+# At 4096, reasoning burns ~2k-3k tokens → JSON gets truncated → parse fails → no Gemini chip.
+# Fix: give Gemini 8192 to ensure reasoning + full JSON output both fit.
+MODEL_MAX_TOKENS = {
+    "claude": 4096,
+    "gpt": 4096,
+    "gemini": 8192,  # thinking mode needs headroom
+    "grok": 4096,
+}
 ANALYSIS_TIMEOUT_MINUTES = 10
 
 # Concurrency: max parallel pipelines before queuing

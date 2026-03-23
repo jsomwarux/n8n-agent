@@ -7,7 +7,7 @@ from pathlib import Path
 
 import httpx
 
-from config import OPENROUTER_API_KEY, OPENROUTER_URL, MODELS, MODEL_DISPLAY_NAMES, LLM_TIMEOUT, LLM_MAX_TOKENS
+from config import OPENROUTER_API_KEY, OPENROUTER_URL, MODELS, MODEL_DISPLAY_NAMES, LLM_TIMEOUT, LLM_MAX_TOKENS, MODEL_MAX_TOKENS
 from pipeline.validators import extract_openrouter_content, parse_llm_json, validate_score
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,10 @@ async def _call_model(client: httpx.AsyncClient, model_key: str, prompt: str, at
         messages.append({"role": "system", "content": "You are a senior skincare analyst and cosmetic chemist. Return ONLY valid JSON, no markdown fences."})
     messages.append({"role": "user", "content": prompt})
 
-    body = {"model": model_id, "max_tokens": LLM_MAX_TOKENS, "messages": messages}
+    # Gemini thinking mode burns tokens on reasoning chain before output —
+    # needs higher max_tokens than other models or JSON gets truncated
+    max_tokens = MODEL_MAX_TOKENS.get(model_key, LLM_MAX_TOKENS)
+    body = {"model": model_id, "max_tokens": max_tokens, "messages": messages}
     # response_format json_object: only supported by OpenAI/Grok — NOT Gemini or Claude
     if model_key in ("gpt", "grok"):
         body["response_format"] = {"type": "json_object"}
