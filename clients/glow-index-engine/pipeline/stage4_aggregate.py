@@ -70,6 +70,8 @@ async def _claude_synthesis(
         consensus_score=consensus_score,
         tier=tier,
         stage3_outputs=stage3_text,
+        display_name=product.get("displayName", "Ranking"),
+        entity_name=product.get("entityName", "product"),
     )
 
     model_id = SYNTHESIS_MODEL  # Claude Opus — one call per analysis, worth the upgrade
