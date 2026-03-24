@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 # Must import config first to validate env vars at startup
 import config  # noqa: F401
 from config import MAX_CONCURRENT_ANALYSES
-from callback import send_callback, send_failure_callback
+from callback import send_callback, send_failure_callback, fetch_and_set_product_image
 from pipeline import stage1_collect, stage2_analyze, stage3_deliberate, stage4_aggregate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -191,6 +191,17 @@ async def _run_pipeline(run_id: str, req: AnalyzeRequest):
         # Send callback
         if req.callbackUrl:
             await send_callback(req.callbackUrl, callback_payload)
+            # Fire-and-forget image fetch for products without images
+            base_url = req.callbackUrl.rsplit("/api/", 1)[0]
+            asyncio.create_task(
+                fetch_and_set_product_image(
+                    product_name=product.get("productName", product.get("name", "")),
+                    brand=product.get("brand", ""),
+                    product_id=req.productId,
+                    fetch_images_url=f"{base_url}/api/fetch-images",
+                    admin_secret=req.callbackSecret,
+                )
+            )
         else:
             logger.info(f"[{run_id}] No callbackUrl — result available via /status/{run_id}")
 
