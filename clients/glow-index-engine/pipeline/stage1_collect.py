@@ -22,13 +22,12 @@ async def run(product_name: str, brand: str, price_usd: Optional[float] = None) 
         f"Stage 1 collection: {result['queries_succeeded']}/6 queries succeeded, "
         f"{result['total_snippets']} total snippets, "
         f"ingredient_source={result['ingredient_source'] or 'none'}, "
+        f"brand_match={result.get('brand_match_confidence', 'unknown')}, "
         f"gate={'PASS' if result['passed_gate'] else 'FAIL'}"
     )
 
     if not result["passed_gate"]:
-        raise ValueError(
-            f"Data collection gate failed: {result['queries_succeeded']}/6 queries, "
-            f"{result['total_snippets']} snippets (need >=3 queries and >=5 snippets)"
-        )
+        reason = result.get("gate_fail_reason", "unknown")
+        raise ValueError(f"Data collection gate failed: {reason}")
 
     return result

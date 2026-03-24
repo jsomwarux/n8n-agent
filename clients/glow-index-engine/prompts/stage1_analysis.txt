@@ -9,6 +9,15 @@ PRODUCT DATA:
 
 {research_section}
 
+=== INGREDIENT DATA CONFIDENCE ===
+
+The research data above includes an "INGREDIENT DATA CONFIDENCE" header (HIGH, MEDIUM, LOW, or NONE).
+- HIGH/MEDIUM: Ingredient data is verified for this brand. Score normally.
+- LOW/NONE: Ingredient data may not belong to this product, or was unavailable. If LOW/NONE, you MUST:
+  - Note in your reasoning that ingredient data confidence is low
+  - Score ingredient_efficacy and formula_transparency conservatively (deduct 3–5 points from what you'd otherwise give)
+  - Rely more on training knowledge and published brand claims rather than the scraped INCI list
+
 === YOUR ANALYSIS FRAMEWORK ===
 
 The central question is not "is this brand reputable?" It is: "Given what is actually in this product at this price, should a consumer buy it?"
