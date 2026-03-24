@@ -33,6 +33,10 @@ MODELS = {
     "grok": "x-ai/grok-4.20-beta",
 }
 
+# Synthesis model: one call per analysis (not 4 parallel) — worth Opus for better cross-model reasoning
+SYNTHESIS_MODEL = "anthropic/claude-opus-4-5"
+SYNTHESIS_MODEL_DISPLAY = "Claude Opus 4.5"
+
 MODEL_DISPLAY_NAMES = {
     "claude": "Claude Sonnet 4.6",
     "gpt": "o3",

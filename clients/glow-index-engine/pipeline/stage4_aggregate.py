@@ -1,31 +1,133 @@
-"""Stage 4: Weighted consensus aggregation."""
+"""Stage 4: Weighted consensus aggregation + Claude synthesis."""
 
+import json
 import logging
 import math
+from pathlib import Path
 from typing import Optional
 
-from config import MODEL_DISPLAY_NAMES
+import httpx
+
+from config import (
+    MODEL_DISPLAY_NAMES,
+    MODELS,
+    OPENROUTER_API_KEY,
+    OPENROUTER_URL,
+    LLM_TIMEOUT,
+    SYNTHESIS_MODEL,
+)
+from pipeline.validators import extract_openrouter_content, parse_llm_json
 
 logger = logging.getLogger(__name__)
+
+SYNTHESIS_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "stage4_synthesis.txt"
 
 
 def _anti_00(score: float) -> float:
     """If score ends in .00, adjust by a small amount to avoid false precision."""
     rounded = round(score, 2)
     if rounded == math.floor(rounded):
-        # Ends in .00 — adjust by +0.13 (arbitrary small nudge)
         rounded += 0.13
     return round(rounded, 2)
 
 
-def run(
+def _load_synthesis_prompt() -> str:
+    text = SYNTHESIS_PROMPT_PATH.read_text()
+    assert len(text) > 500, f"Stage 4 synthesis prompt too short ({len(text)} chars)"
+    return text
+
+
+def _format_stage3_outputs(stage3_results: dict[str, dict]) -> str:
+    """Format all Stage 3 outputs as labeled JSON blocks for the synthesis prompt."""
+    sections = []
+    for model_key in MODELS:
+        display_name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
+        result = stage3_results.get(model_key, {})
+        parsed = result.get("parsed")
+        if parsed and not result.get("error"):
+            sections.append(f"### {display_name}\n```json\n{json.dumps(parsed, indent=2)}\n```")
+        else:
+            error = result.get("error", "No output")
+            sections.append(f"### {display_name}\n[FAILED: {error}]")
+    return "\n\n".join(sections)
+
+
+async def _claude_synthesis(
+    stage3_results: dict[str, dict],
+    consensus_score: float,
+    tier: str,
+    product: dict,
+) -> Optional[dict]:
+    """Call Claude via OpenRouter to synthesize all 4 Stage 3 outputs into a consumer-facing summary."""
+    try:
+        template = _load_synthesis_prompt()
+    except Exception as e:
+        logger.warning(f"Stage 4 synthesis: failed to load prompt: {e}")
+        return None
+
+    stage3_text = _format_stage3_outputs(stage3_results)
+    prompt = template.format(
+        consensus_score=consensus_score,
+        tier=tier,
+        stage3_outputs=stage3_text,
+    )
+
+    model_id = SYNTHESIS_MODEL  # Claude Opus — one call per analysis, worth the upgrade
+    body = {
+        "model": model_id,
+        "max_tokens": 2048,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                OPENROUTER_URL,
+                json=body,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=LLM_TIMEOUT,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        raw_text = extract_openrouter_content(data)
+        if raw_text is None:
+            logger.warning(f"Stage 4 synthesis: no content in response")
+            return None
+
+        parsed = parse_llm_json(raw_text, "claude")
+        if not parsed:
+            logger.warning(f"Stage 4 synthesis: JSON parse failed. Preview: {(raw_text or '')[:300]}")
+            return None
+
+        # Validate required fields
+        required = ("final_reasoning", "key_findings", "verdict", "consensus_notes")
+        missing = [f for f in required if f not in parsed]
+        if missing:
+            logger.warning(f"Stage 4 synthesis: missing fields {missing}")
+            return None
+
+        logger.info(f"Stage 4 synthesis: Claude produced {len(parsed.get('key_findings', []))} findings, verdict='{parsed.get('verdict', '')[:60]}'")
+        return parsed
+
+    except Exception as e:
+        logger.warning(f"Stage 4 synthesis: Claude call failed: {e}")
+        return None
+
+
+async def run(
     stage2_results: dict[str, dict],
     stage3_results: dict[str, dict],
     product: dict,
 ) -> dict:
-    """Compute weighted consensus from Stage 3 (deliberation) results.
+    """Compute weighted consensus from Stage 3 (deliberation) results,
+    then call Claude for final synthesis.
 
     Falls back to Stage 2 scores for models that failed Stage 3.
+    Falls back to stitched output if Claude synthesis fails.
 
     Returns full callback-ready payload.
     """
@@ -85,7 +187,6 @@ def run(
         tier = "C"
 
     # Consumer verdict: majority vote from Stage 3 (or Stage 2 fallback)
-    # Valid values: BUY_IT, WORTH_IT_WITH_CAVEATS, SKIP_IT
     VALID_VERDICTS = {"BUY_IT", "WORTH_IT_WITH_CAVEATS", "SKIP_IT"}
     verdicts = []
     for model_key in stage2_results:
@@ -148,12 +249,65 @@ def run(
                 "reasoning": s3.get("error") or s2.get("error") or "Model failed",
             })
 
-    logger.info(f"Stage 4 consensus: score={consensus_score}, tier={tier}, verdict={consumer_verdict}")
+    # Claude synthesis call
+    synthesis = await _claude_synthesis(stage3_results, consensus_score, tier, product)
 
-    return {
+    result = {
         "analyses": analyses,
         "consensusScore": consensus_score,
         "tier": tier,
         "consumerVerdict": consumer_verdict,
         "modelScores": {k: v for k, v in model_scores.items()},
     }
+
+    if synthesis:
+        result["final_reasoning"] = synthesis["final_reasoning"]
+        result["key_findings"] = synthesis["key_findings"]
+        result["red_flags"] = synthesis.get("red_flags", [])
+        result["best_dupe"] = synthesis.get("best_dupe")
+        result["verdict"] = synthesis["verdict"]
+        result["consensus_notes"] = synthesis["consensus_notes"]
+        result["synthesis_by"] = "claude"
+        logger.info(f"Stage 4 consensus: score={consensus_score}, tier={tier}, verdict={consumer_verdict}, synthesis=claude")
+    else:
+        # Fallback: stitch from individual model outputs
+        all_findings = []
+        all_flags = []
+        all_dupes = []
+        for model_key in stage2_results:
+            s3 = stage3_results.get(model_key, {})
+            parsed = s3.get("parsed") if (s3.get("parsed") and not s3.get("error")) else stage2_results.get(model_key, {}).get("parsed")
+            if parsed:
+                all_findings.extend(parsed.get("key_findings", []))
+                all_flags.extend(parsed.get("red_flags", []))
+                dupe = parsed.get("best_dupe")
+                if dupe:
+                    all_dupes.append(dupe)
+
+        # Dedupe by taking unique findings (simple dedup)
+        seen = set()
+        deduped_findings = []
+        for f in all_findings:
+            normalized = f.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                deduped_findings.append(f)
+
+        seen_flags = set()
+        deduped_flags = []
+        for f in all_flags:
+            normalized = f.strip().lower()
+            if normalized not in seen_flags:
+                seen_flags.add(normalized)
+                deduped_flags.append(f)
+
+        result["final_reasoning"] = ""
+        result["key_findings"] = deduped_findings[:5]
+        result["red_flags"] = deduped_flags[:5]
+        result["best_dupe"] = all_dupes[0] if all_dupes else None
+        result["verdict"] = ""
+        result["consensus_notes"] = ""
+        result["synthesis_by"] = "fallback"
+        logger.info(f"Stage 4 consensus: score={consensus_score}, tier={tier}, verdict={consumer_verdict}, synthesis=fallback")
+
+    return result

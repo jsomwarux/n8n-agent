@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import urllib.parse
+from typing import Optional
 
 import httpx
 
@@ -15,7 +16,7 @@ _BRAVE_IMAGE_URL = "https://api.search.brave.com/res/v1/images/search"
 _ENV_PATH = os.path.expanduser("~/.config/env/global.env")
 
 
-def _load_brave_key() -> str | None:
+def _load_brave_key() -> Optional[str]:
     try:
         with open(_ENV_PATH) as f:
             for line in f:

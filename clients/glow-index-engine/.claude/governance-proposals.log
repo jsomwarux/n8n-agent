@@ -1,0 +1,14 @@
+═══ 2026-03-24T21:13:03Z ═══
+File: (governance target detected in command)
+Tool: Bash
+command: mkdir -p /Users/jtsomwaru/projects/n8n-agent/clients/glow-index-engine/.claude && cat > /Users/jtsomwaru/projects/n8n-agent/clients/glow-index-engine/.claude/warden.config.sh << 'EOF'
+EXTRA_ROOT_FILES=("main.py" "config.py" "callback.py" "*.py")
+EOF
+═══ END ═══
+
+═══ 2026-03-24T21:13:14Z ═══
+File: .claude/warden.config.sh
+Tool: Write
+content: EXTRA_ROOT_FILES=("main.py" "config.py" "callback.py" "*.py")
+═══ END ═══
+

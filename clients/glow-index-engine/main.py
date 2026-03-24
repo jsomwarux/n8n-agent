@@ -173,7 +173,7 @@ async def _run_pipeline(run_id: str, req: AnalyzeRequest):
         # Stage 4: Consensus aggregation
         _set_stage(run_id, 4)
         logger.info(f"[{run_id}] Stage 4: Computing consensus")
-        aggregated = stage4_aggregate.run(s2_results, s3_results, product)
+        aggregated = await stage4_aggregate.run(s2_results, s3_results, product)
 
         elapsed = round(time.time() - start_time, 1)
         logger.info(f"[{run_id}] Pipeline complete in {elapsed}s — consensus={aggregated['consensusScore']}, tier={aggregated['tier']}")
