@@ -365,6 +365,54 @@ Use these two files to track work:
 - **ensemble-architect**: How to build 4-LLM ensemble patterns in n8n
 - (plus the 7 n8n-skills installed globally)
 
+---
+
+## MCP Bidirectional Integration (Architecture Pattern — March 2026)
+
+n8n now supports MCP on BOTH sides. This changes how to architect Agentforce integrations.
+
+### n8n as MCP Server (most relevant for JT consulting)
+Use **MCP Server Trigger** node to expose n8n workflows as tools callable by any MCP-capable agent (Claude, Agentforce, Claude Desktop).
+
+Pattern:
+```
+MCP Server Trigger → Custom n8n Workflow Tool (sub-workflow) → [CRM / API / DB nodes] → return result
+```
+
+Why this matters: Instead of a custom Salesforce connector, expose the integration logic via n8n MCP. Agentforce calls n8n as a tool natively.
+
+**Consulting pitch:** Client already has n8n + Salesforce. MCP bridges them without a custom connector. Reduces scope, uses existing infra.
+
+Example flows for JT's ICPs:
+- Insurance: Agentforce calls n8n MCP → n8n queries Applied Epic for renewal data
+- Wholesale: Agentforce calls n8n MCP → n8n queries ERP for inventory levels
+- Construction/PM: Agentforce calls n8n MCP → n8n queries job tracking for punch list status
+
+### n8n as MCP Client (AI Agent node consuming external tools)
+Use **MCP Client Tool** sub-node on any AI Agent node to connect to external MCP servers.
+- Supports Bearer auth, header auth, OAuth2
+- Can filter exposed tools (use only read ops, exclude dangerous writes)
+- Transport: Streamable HTTP (preferred; SSE is deprecated)
+
+### Key Nodes
+| Node | Type | Purpose |
+|---|---|---|
+| `MCP Server Trigger` | Trigger | Expose n8n as MCP server |
+| `MCP Client Tool` | Sub-node | Consume external MCP server |
+| `Custom n8n Workflow Tool` | Sub-node | Expose sub-workflow as an individual tool |
+
+### Building a Client MCP Server
+1. Create a new workflow with MCP Server Trigger as the entry node
+2. Add `Custom n8n Workflow Tool` sub-nodes — one per capability (e.g., "check_renewal_status", "get_inventory_level")
+3. Each sub-node points to a sub-workflow that handles the actual logic
+4. Set authentication (Bearer token) on the trigger
+5. Publish workflow → copy Production URL
+6. Provide Production URL to client's Agentforce agent as a tool endpoint
+
+Full reference: `knowledge/n8n-core-reference.md` → MCP Integration section.
+
+---
+
 ### Custom Commands
 - /build-workflow — Build an n8n workflow (guided)
 - /validate — Validate all workflows
