@@ -239,3 +239,69 @@ Frontend components were extracting pros, cons, quick takes, and dupe recommenda
 [ranking-app-factory]: **After any Replit git pull, always run `npm run build` + redeploy.** Pull alone does not rebuild the Next.js bundle. New API routes, component changes, and schema updates are invisible until a fresh build runs. The Replit Deployments tab redeploy button uses the last build — it does NOT re-run `npm run build`. You must run `npm run build` in the Replit Shell first, then redeploy.
 
 [n8n-mcp-integration]: **n8n supports bidirectional MCP (as of April 2025 — now stable).** n8n can act as BOTH an MCP client (consuming external MCP servers as tools for AI Agent nodes) and an MCP server (exposing n8n workflows as tools callable by any MCP agent). Key nodes: `MCP Server Trigger` (expose n8n as server), `MCP Client Tool` (consume external MCP), `Custom n8n Workflow Tool` (expose sub-workflow as individual tool). For JT consulting: use MCP Server Trigger to expose client workflow capabilities to Agentforce agents — no custom Salesforce connector needed, the integration runs through n8n's MCP URL. Transport: prefer Streamable HTTP over SSE (SSE is deprecated). Auth: Bearer token or Header auth on the MCP Server Trigger. Full reference: knowledge/n8n-core-reference.md → MCP Integration section.
+
+[glow-index-engine]: **`request.nextUrl.origin` returns empty/internal URL on Replit — always use an explicit env var for callback URLs.**
+When a Next.js app on Replit builds a callback URL using `request.nextUrl.origin`, the origin resolves to an internal Cloudflare/Replit URL that is unreachable from external services (Mac mini engine, n8n). Every analysis completed but sent results to `""/api/analysis-callback` — silently discarded. Fix: always use `process.env.NEXT_PUBLIC_APP_URL || process.env.SITE_URL || request.nextUrl.origin`. Add `NEXT_PUBLIC_APP_URL=https://[app].replit.app` to Replit Secrets on every ensemble deploy. This affects any endpoint where an external service needs to call back into the Replit app.
+
+[glow-index-engine]: **Verify callback_url is non-empty in engine status BEFORE triggering batch analyses.**
+The engine's `/status` endpoint shows `callback_url` for each running job. Before committing to a full batch run, trigger ONE product via `/api/trigger-analysis`, then hit `/status` and confirm `callback_url` is a real URL (not empty string, not localhost, not an internal address). If it shows `NOT SET` or empty — stop, find the origin bug, fix and redeploy. Running 66+ products with no callback_url wastes all API credits. Verification command: `curl -s 'http://localhost:8001/status' | python3 -c "import sys,json; d=json.load(sys.stdin); [print(i.get('callback_url','EMPTY')) for i in d.get('running',{}).values()]"`
+
+[glow-index-engine]: **Never use a real product ID when testing callback endpoints.**
+Testing `/api/analysis-callback` with a real `productId` writes fake data (score, tier) to the product record in Supabase. This corrupts the product — it shows as "scored" so batch-analyze skips it, but the product detail page has no real analysis data (empty ingredient breakdown, no model reasoning). Always use a non-existent ID like `test-product-00` for endpoint verification. If a real product is accidentally corrupted: reset via Supabase Table Editor — set `consensusScore`, `tier`, `lastAnalyzedAt` all to null.
+
+[glow-index-engine]: **The LaunchAgent ThrottleInterval controls how fast launchd restarts a crashed gateway. Default 1s causes rapid crash loops that exhaust launchd's restart budget and deregister the job.**
+After a crash loop with ThrottleInterval=1s, launchd drops the job from its registry. `launchctl kickstart` then silently fails (job not found). The only recovery is `launchctl load` (re-registers from scratch). Fix: set ThrottleInterval to 10+ seconds in the plist. Watchdog must use `ps aux | grep -q "[o]penclaw-gateway"` NOT `pgrep -f "openclaw-gateway"` — compiled binaries don't show args in pgrep -f. Fallback recovery order: kickstart → unload+load → Telegram alert to JT.
+
+[glow-index-frontend]: **Stage 3 deliberation records bleed into KeyFindings components — always filter to stage===2 strictly.**
+Stage 3 deliberation prompts ask models to compare their score against others ("My original score of 22 was conservative relative to Gemini/Grok"). This language is internal reasoning, not consumer content. KeyFindings (QuickTake, Pros, Cons) MUST filter to `a.stage === 2` only. Never fall back to all analyses when stage 2 is missing — return null instead. Add deliberation-language patterns to META_PATTERNS: "original score", "revised score", "relative to the consensus", "cross-model", "all four models".
+
+[glow-index-frontend]: **LLM panel scores blank when component sum returns 0 — always read consensusScore field first.**
+`parseTotal()` summed 6 component score fields from the Analysis.scores JSON. If any model returns slightly different field names or the sum is 0, the panel shows blank. Fix: read `analysis.consensusScore` (stored directly by callback) first, fall back to component sum only if null. This applies to any ensemble app where per-model scores are stored as both a direct field AND component breakdown.
+
+[glow-index-frontend]: **Quick Take must be consumer-facing, never analytical meta-text.**
+The sentence extraction approach for Quick Take grabs the "most informative" sentence from reasoning — but LLM reasoning contains meta-analysis ("conservative relative to consensus") that reads as gibberish to consumers. Fix: (1) reject any sentence matching deliberation patterns, (2) prefer sentences containing verdict words (buy/worth/recommend/skip/delivers), (3) cap at 200 chars, (4) return null if nothing clean — blank is better than confusing text.
+
+[glow-index-ensemble]: **For any new ensemble niche: build a pre-batch verification checklist and run it before spending any API credits.**
+Pre-batch checklist (mandatory, every niche):
+1. Trigger 1 product via trigger-analysis endpoint
+2. Watch engine /status — confirm callback_url is a real URL
+3. Confirm score lands in DB within 10 min
+4. Check product detail page — all 4 models show scores, Quick Take is consumer-friendly, no meta-text
+5. Only then run batch-analyze
+Skipping any step = guaranteed wasted credits and corrupted data. We spent $30+ and 4+ hours on this on 2026-04-05 because we skipped step 4.
+
+[glow-index-ensemble]: **Replit does NOT auto-pull from GitHub. After every code push, JT must: Replit → Shell → git pull → npm run build → Deployments → Rebuild from scratch.**
+This is not optional — the live app won't reflect code changes until a full rebuild. "Redeploy" reuses old build and misses new code.
+
+[glow-index-engine]: **Brave Search with exact-match quotes on long product names returns 0 results — always use unquoted fuzzy queries.**
+Queries like `"Anthelios Melt-In Sunscreen SPF 60" site:reddit.com` return 0 snippets because Brave requires exact string match. Removing the quotes (`Anthelios Melt-In Sunscreen SPF 60 La Roche-Posay site:reddit.com`) returns 5 snippets. Rule: never quote the product name in Brave queries. The brand name provides enough specificity without quotes.
+
+[glow-index-frontend]: **LLM verdict enums like WORTH_IT_WITH_CAVEATS must be mapped to human-readable text before display.**
+The engine stores `consumer_verdict` as an enum (BUY_IT, WORTH_IT_WITH_CAVEATS, SKIP_IT). If the frontend displays this raw, users see "WORTH_IT_WITH_CAVEATS" as the Quick Take. Fix: add a VERDICT_LABELS mapping object in the frontend. Unknown enums get title-cased as fallback. Prose strings pass through unchanged.
+
+[glow-index-frontend]: **key_findings (Pros) can contain negative statements — add a frontend negative-language filter.**
+LLMs don't reliably self-classify positive vs negative findings. A "pro" like "Silent reformulation history undermines consumer trust" is clearly negative. Fix at two levels: (1) prompt validation instruction ("read each finding aloud, move negatives to red_flags"), (2) frontend regex filter that moves any pro matching negative patterns (undermines, concerns, problematic, lacks, fails, controversy, disappointing) to cons automatically. Belt and suspenders — never trust the LLM alone.
+
+[glow-index-frontend]: **generated/ folder is gitignored — Replit builds need `prisma generate` in the build script.**
+The Prisma client is generated locally but not committed. On Replit, `npm run build` → `next build` fails because the client doesn't exist. Fix: change build script to `prisma generate --schema=prisma/schema.prisma && next build`. Also add `postinstall: prisma generate --schema=prisma/schema.prisma`.
+
+[glow-index-frontend]: **After git push, Replit requires: git pull → npm install → npm run build → Rebuild from scratch. Every time.**
+"Redeploy" reuses the old build. "Rebuild from scratch" without `npm install` may miss new dependencies. `npm run build` without `git pull` uses old code. All 4 steps are mandatory. No exceptions.
+
+[glow-index-engine]: **Stage 4 aggregate must handle non-dict results from asyncio.gather — add isinstance checks.**
+`asyncio.gather(return_exceptions=True)` can return Exception objects. If stage2_results or stage3_results contain a non-dict value, `s3.get("parsed")` throws AttributeError. Fix: add `if not isinstance(s3, dict): s3 = {}` before any .get() call on gathered results.
+
+[glow-index-engine]: **The /status endpoint doesn't expose callback_url — don't use it to verify callback routing.**
+The engine's `/status` response deliberately omits `callback_url` from the running dict. Checking `/status` for "callback_url: EMPTY" is misleading — the field isn't returned. To verify callback routing: check the n8n execution data (Validate Input node output → callbackUrl field) or test by sending a direct callback to the endpoint.
+
+[glow-index-engine]: **Never test callback endpoints with real product IDs — corrupts the product record.**
+Sending fake analysis data to `/api/analysis-callback` with a real `productId` writes a fake score to Supabase. The product then appears "scored" so batch-analyze skips it, but the detail page shows empty analysis. Always use `productId: "test-product-00"` for endpoint verification. Recovery: reset `consensusScore`, `tier`, `lastAnalyzedAt` to null in Supabase SQL Editor.
+
+[glow-index-engine]: **Stage 2 retry logic must retry parse/validate failures, not just network errors.**
+Original retry logic only retried on timeout/network errors. If a model returned valid HTTP but invalid JSON (or JSON that failed validation), it was accepted as a failure with no retry. Fix: treat parse/validate failures as retryable. 3 attempts per model with exponential backoff (2s, 5s, 10s). If any model still fails after 3 attempts, wait 60s and retry the entire stage once.
+
+[glow-index-infra]: **Replit's request.nextUrl.origin returns empty/internal URL — always use NEXT_PUBLIC_APP_URL env var.**
+When Replit's Next.js builds a callback URL using `request.nextUrl.origin`, it resolves to an internal URL unreachable from external services. Every endpoint that builds a callback URL must use `process.env.NEXT_PUBLIC_APP_URL || process.env.SITE_URL || request.nextUrl.origin`. Mandatory Replit Secret: `NEXT_PUBLIC_APP_URL=https://[app].replit.app`.
+
+[glow-index-infra]: **N8N_WEBHOOK_URL must be the Tailscale Funnel URL, not the tailnet-only URL.**
+The n8n webhook must be reachable from Replit (public internet). Tailscale Funnel on port 8443 provides public access. The tailnet-only URL on port 8080 is only accessible within the tailnet. Correct: `https://jts-mac-mini.tailaf2fd2.ts.net:8443/webhook/skincare-analysis`. Wrong: `http://jts-mac-mini.tailaf2fd2.ts.net:8080/webhook/skincare-analysis`.

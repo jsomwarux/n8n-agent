@@ -207,7 +207,8 @@ async def _run_pipeline(run_id: str, req: AnalyzeRequest):
 
     except Exception as e:
         elapsed = round(time.time() - start_time, 1)
-        logger.error(f"[{run_id}] Pipeline failed after {elapsed}s: {e}")
+        import traceback
+        logger.error(f"[{run_id}] Pipeline failed after {elapsed}s: {e}\n{traceback.format_exc()}")
         if req.callbackUrl:
             await send_failure_callback(
                 req.callbackUrl, req.callbackSecret, req.productId, run_id, str(e)

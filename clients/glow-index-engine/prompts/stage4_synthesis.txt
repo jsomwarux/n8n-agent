@@ -30,9 +30,9 @@ Return ONLY valid JSON with these 6 fields. No markdown fences, no commentary ou
 
 ## Field Instructions
 
-- **final_reasoning**: 150-200 words. Synthesize what all 4 models found. Mention agreement areas. Note key disagreements. Give your final take. Write as if explaining to a friend who asked "should I get this?" Do NOT repeat the score or tier — the UI already shows those.
-- **key_findings**: 3-5 consolidated findings. Dedupe across all 4 models — take the best-written version of each point. These should be the most important things a consumer needs to know.
-- **red_flags**: Consolidated list of genuine concerns. Empty array [] if none. Do NOT invent concerns — only include issues that at least 2 models flagged, or 1 model flagged with strong evidence.
-- **best_dupe**: If models suggested alternatives, pick the single best one. Format: "Name by Brand — $XX". If no alternatives were suggested or models agreed the {entity_name} is already great value, return null.
-- **verdict**: One sentence, max 15 words. A consumer should be able to read this and decide.
-- **consensus_notes**: 1-2 sentences for the AI Panel showing where models agreed/disagreed. This is for users who want to see the analytical detail.
+- **final_reasoning**: 150-200 words. Synthesize what all 4 models found. Write at 8th grade reading level — no jargon without plain-English translation. Explain like a friend who asked "should I get this?" Do NOT repeat the score or tier.
+- **key_findings**: 3-4 consolidated findings. Each 1-2 sentences MAX. Be punchy and direct. Dedupe across models. No filler words, no paragraph-length findings.
+- **red_flags**: Genuine concerns ONLY. Each 1 sentence max. Empty array [] if none. Do NOT invent concerns. CRITICAL: every red_flag must be genuinely negative. If a statement describes something positive, it belongs in key_findings. Verify each one before outputting.
+- **best_dupe**: Specific product name + brand + price. Format: "Name by Brand — $XX". NOT abstract market analysis. If this IS the budget option: "Already the budget leader — no meaningful alternative at lower price."
+- **verdict**: One sentence, max 15 words. A BUYING DECISION, not usage advice. Consumer reads this and decides buy/skip.
+- **consensus_notes**: 1-2 sentences for the AI Panel showing where models agreed/disagreed.

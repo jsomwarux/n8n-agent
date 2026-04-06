@@ -153,14 +153,19 @@ async def run(
     for model_key in stage2_results:
         s3 = stage3_results.get(model_key, {})
         s2 = stage2_results.get(model_key, {})
+        # Defensive: s3/s2 could be non-dict if asyncio.gather returned an exception string
+        if not isinstance(s3, dict): s3 = {}
+        if not isinstance(s2, dict): s2 = {}
         parsed = s3.get("parsed") if (s3.get("parsed") and not s3.get("error")) else s2.get("parsed")
         score = _get_score(parsed)
         model_scores[model_key] = score  # None if failed
 
     valid_scores = {k: v for k, v in model_scores.items() if v is not None}
 
+    if len(valid_scores) < 2:
+        raise ValueError(f"Only {len(valid_scores)} valid scores for consensus (need at least 2)")
     if len(valid_scores) < 3:
-        raise ValueError(f"Only {len(valid_scores)} valid scores for consensus (need 3)")
+        import logging; logging.getLogger(__name__).warning(f"Only {len(valid_scores)}/4 models scored — computing consensus from available models")
 
     # Weighted average: abs(score - median) > 15 → weight 0.5, else 1.0
     sorted_vals = sorted(valid_scores.values())
@@ -194,6 +199,8 @@ async def run(
     for model_key in stage2_results:
         s3 = stage3_results.get(model_key, {})
         s2 = stage2_results.get(model_key, {})
+        if not isinstance(s3, dict): s3 = {}
+        if not isinstance(s2, dict): s2 = {}
         parsed = s3.get("parsed") if (s3.get("parsed") and not s3.get("error")) else s2.get("parsed")
         if parsed:
             v = parsed.get("consumer_verdict", "")
@@ -224,6 +231,10 @@ async def run(
                 "red_flags": s2_parsed.get("red_flags", []),
                 "best_dupe": s2_parsed.get("best_dupe"),
                 "consumer_verdict": s2_parsed.get("consumer_verdict", ""),
+                "best_for": s2_parsed.get("best_for", []),
+                "skip_if": s2_parsed.get("skip_if", []),
+                "how_to_use": s2_parsed.get("how_to_use", ""),
+                "verdict": s2_parsed.get("verdict", ""),
             })
 
         # Stage 2 (from stage3_results — deliberation)

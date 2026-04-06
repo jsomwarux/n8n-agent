@@ -107,8 +107,10 @@ async def run(product: dict, stage2_results: dict[str, dict]) -> dict[str, dict]
     # Only deliberate models that succeeded in Stage 2
     eligible = {k: v for k, v in stage2_results.items() if v.get("parsed") and not v.get("error")}
 
+    if len(eligible) < 2:
+        raise ValueError(f"Only {len(eligible)} eligible models for deliberation (need at least 2)")
     if len(eligible) < 3:
-        raise ValueError(f"Only {len(eligible)} eligible models for deliberation (need 3)")
+        import logging; logging.getLogger(__name__).warning(f"Only {len(eligible)} eligible models for deliberation — continuing")
 
     results = {}
     async with httpx.AsyncClient() as client:

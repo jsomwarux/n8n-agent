@@ -68,32 +68,32 @@ def _build_brave_queries(product_name: str, brand: str) -> list:
     return [
         {
             "key": "inci_formula",
-            "query": f'"{product_name}" site:incidecoder.com OR site:cosdna.com OR site:ewg.org ingredients INCI',
+            "query": f'{product_name} {brand} site:incidecoder.com OR site:cosdna.com OR site:ewg.org ingredients INCI',
             "purpose": "Full ingredient list from cosmetic databases",
         },
         {
             "key": "reddit_community",
-            "query": f'"{product_name}" {brand} site:reddit.com skincare review',
+            "query": f'{product_name} {brand} site:reddit.com skincare review',
             "purpose": "Organic community sentiment",
         },
         {
             "key": "derm_expert",
-            "query": f'"{product_name}" {brand} dermatologist esthetician review ingredients analysis',
+            "query": f'{product_name} {brand} dermatologist esthetician review ingredients analysis',
             "purpose": "Professional opinion and ingredient critique",
         },
         {
             "key": "dupe_alternative",
-            "query": f'"{product_name}" dupe alternative cheaper "same ingredients" OR "similar formula"',
+            "query": f'{product_name} {brand} dupe alternative cheaper similar formula',
             "purpose": "Formula-equivalent alternatives at lower price",
         },
         {
             "key": "controversy",
-            "query": f'"{product_name}" {brand} reformulation "ingredient concern" OR "reaction" OR "controversy"',
+            "query": f'{product_name} {brand} reformulation ingredient concern OR reaction OR controversy',
             "purpose": "Safety flags, silent reformulations, adverse reactions",
         },
         {
             "key": "clinical_evidence",
-            "query": f'{brand} "{product_name}" clinical study "clinically proven" OR "dermatologist tested" concentration',
+            "query": f'{brand} {product_name} clinical study clinically proven OR dermatologist tested',
             "purpose": "Clinical backing and active concentration claims",
         },
     ]

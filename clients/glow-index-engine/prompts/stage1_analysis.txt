@@ -107,7 +107,27 @@ Consumer verdict:
 - WORTH_IT_WITH_CAVEATS: solid product with specific conditions (skin type, price, pairing requirements)
 - SKIP_IT: formula is underdosed, overpriced relative to alternatives, or has meaningful safety concerns
 
+=== WRITING RULES (MANDATORY) ===
+
+1. Write at 8th grade reading level. No jargon without immediate plain-English translation.
+   - Say "prevents moisture loss" not "reduces TEWL"
+   - Say "lab studies" not "mechanistic and observational evidence"
+   - Say "clinical trials" not "RCT-driven evidence"
+   - Say "fungal acne" not "Malassezia folliculitis" (or use both: "fungal acne (Malassezia)")
+   - Say "locks in moisture" not "occlusive emollient"
+   - Say "attracts water to skin" not "humectant mechanism"
+   - Remove all PMID references — replace with "backed by research" or "clinically studied"
+2. key_findings: 1-2 sentences each, max 4 findings. Be punchy. No filler words.
+   - WRONG: "The Ordinary delivers this raw, clinically proven ingredient at an aggressive $12.00 point, bypassing the exorbitant 'brand tax' levied by luxury competitors"
+   - RIGHT: "$12 for pharmaceutical-grade squalane — luxury brands charge $40+ for the same ingredient"
+3. red_flags: genuine concerns only. Each 1 sentence max. If a statement is positive, it belongs in key_findings, NOT red_flags.
+   VALIDATION: Before outputting, read each key_finding aloud. If it describes something NEGATIVE (a limitation, concern, criticism, or controversy), move it to red_flags. key_findings must ONLY contain genuine benefits and strengths. Read each red_flag aloud. If it describes something POSITIVE, move it to key_findings.
+4. verdict: max 15 words. A buying decision, not usage advice.
+   - WRONG: "It performs best when layered over a water-based humectant or mixed into moisturizer"
+   - RIGHT: "A near-perfect single-ingredient oil at an unbeatable price"
+5. best_dupe: specific product name + brand + price. NOT abstract market analysis. If this IS the budget option, say: "Already the budget leader — no meaningful alternative exists at lower price."
+
 === OUTPUT FORMAT ===
 
 Return ONLY valid JSON — no markdown, no code fences, no preamble, no trailing text:
-{{"llm": "{llmName}", "stage": 1, "product": "{productName}", "brand": "{brand}", "formula_type": "<SCIENCE-LED|MARKETING-LED|HYBRID>", "primary_category": "{category}", "sub_category": "<specific sub-category>", "scores": {{"ingredient_efficacy": <0-30>, "safety_profile": <0-20>, "value_for_money": <0-20>, "formula_transparency": <0-15>, "skin_compatibility": <0-10>, "sensory_usability": <0-5>}}, "base_score": <exact sum of 6 scores>, "tier": "<S+|S|A|B|C>", "consumer_verdict": "<BUY_IT|WORTH_IT_WITH_CAVEATS|SKIP_IT>", "reasoning": "<evidence-based analysis, minimum 200 words, cite specific ingredients, concentrations, and studies>", "key_findings": ["<concrete finding 1>", "<concrete finding 2>", "<concrete finding 3>"], "red_flags": ["<concern or empty array if none>"], "top_competitors": ["<competitor product at similar price>", "<competitor product>"], "best_dupe": "<Product Name by Brand — $XX or null if none exists>", "verdict": "<one direct sentence a consumer can act on>"}}
+{{"llm": "{llmName}", "stage": 1, "product": "{productName}", "brand": "{brand}", "formula_type": "<SCIENCE-LED|MARKETING-LED|HYBRID>", "primary_category": "{category}", "sub_category": "<specific sub-category>", "scores": {{"ingredient_efficacy": <0-30>, "safety_profile": <0-20>, "value_for_money": <0-20>, "formula_transparency": <0-15>, "skin_compatibility": <0-10>, "sensory_usability": <0-5>}}, "base_score": <exact sum of 6 scores>, "tier": "<S+|S|A|B|C>", "consumer_verdict": "<BUY_IT|WORTH_IT_WITH_CAVEATS|SKIP_IT>", "reasoning": "<evidence-based analysis, minimum 200 words, cite specific ingredients, concentrations, and studies>", "key_findings": ["<concrete finding 1>", "<concrete finding 2>", "<concrete finding 3>"], "red_flags": ["<concern or empty array if none>"], "top_competitors": ["<competitor product at similar price>", "<competitor product>"], "best_dupe": "<Product Name by Brand — $XX or null if none exists>", "verdict": "<one direct sentence a consumer can act on — max 15 words, buying decision not usage advice>", "best_for": ["<skin type or concern this product is ideal for>", "<another use case>"], "skip_if": ["<reason someone should NOT buy this>", "<another reason>"], "how_to_use": "<1-2 sentences: when to apply, how much, what to pair with>"}}
