@@ -305,3 +305,29 @@ When Replit's Next.js builds a callback URL using `request.nextUrl.origin`, it r
 
 [glow-index-infra]: **N8N_WEBHOOK_URL must be the Tailscale Funnel URL, not the tailnet-only URL.**
 The n8n webhook must be reachable from Replit (public internet). Tailscale Funnel on port 8443 provides public access. The tailnet-only URL on port 8080 is only accessible within the tailnet. Correct: `https://jts-mac-mini.tailaf2fd2.ts.net:8443/webhook/skincare-analysis`. Wrong: `http://jts-mac-mini.tailaf2fd2.ts.net:8080/webhook/skincare-analysis`.
+
+- **construction-dashboard (G-Net, 2026-04-07):** Multi-type job classification in a single workflow: use job type as the routing key for compliance tags, reporting cadence, and owner alert logic. Separate "compliance row" branch (only fires when flags exist) keeps sheets clean. Stalled detection: compare % vs prior update — flag if delta <5pts over 2 consecutive updates. New job creation webhook should route to AI classifier before hitting pipeline sheet — AI determines job type + compliance tags rather than requiring manual classification.
+
+---
+
+## 2026-04-07 — Cron Content Without Local Save = Lost Forever
+
+**Pattern**: Spanish Weekly Eval cron generates evaluation content → tries to send via Telegram message tool → Telegram fails → content is gone forever.
+
+**What happened**:
+- Cron ran April 5 8PM, generated Spanish evaluation content
+- Message tool failed ("⚠️ ✉️ Message failed")
+- OpenClaw marked `deliveryStatus: "delivered"` despite message failure
+- No local file save — content was lost
+
+**Lesson**: Every cron that generates dynamic content (evaluations, briefs, summaries) MUST:
+1. Write content to local file BEFORE attempting Telegram/announce delivery
+2. Include retry logic: if delivery fails, content is preserved on disk
+3. Check delivery status after send — don't trust `deliveryStatus` blindly
+
+**Applies to**:
+- `spanish-weekly-eval` (012216b9) — evaluations sent via message tool, no local save
+- `spanish-daily-lesson` (babd905a) — lessons sent via message tool, no local save  
+- `weekly-synthesis` (eve-weekly-synthesis) — brief sent via announce, local save exists in history/ but not guaranteed before send
+
+**Fix**: For Spanish Weekly Eval: add `write to spanish/evaluations/YYYY-MM-DD.md BEFORE message tool call`. Cron payload should save first, then send.
