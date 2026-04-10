@@ -32,6 +32,7 @@
 - Rate limiting via n8n Static Data (NOT Google Sheets — avoids latency and API quota burn)
 - Step 1: Claude Haiku routes intent to data source (appfolio/quickbooks/insurance/unknown). Prompt should include instruction to normalize typos in names.
 - Step 2: Query the appropriate data source. Use Fuse.js fuzzy search for tenant name lookups against CSV/sheet data.
+- IMPORTANT: Do NOT use require('fs') in Code nodes — n8n sandbox blocks it. Read CSV files using n8n's native 'Read Binary File' + 'Spreadsheet File' nodes BEFORE the Code node. Pass parsed data into the Code node as input items. Only require('fuse.js') is allowed (enabled via NODE_FUNCTION_ALLOW_EXTERNAL in Docker config).
 - Step 3: Claude Sonnet generates answer from retrieved data
 - Step 4: Send response back via Twilio API
 - Step 5: Log to Bot Activity Log Google Sheet
@@ -42,6 +43,7 @@
 - Ingests daily Flagstar bank deposit report (PDF via email or watched folder)
 - Claude Sonnet parses PDF into structured transaction JSON
 - DO NOT use regex to strip numbers — it destroys check numbers and invoice IDs. The Claude prompt should instruct it to exclude account/routing numbers while preserving check/invoice reference numbers.
+- After Claude parses the PDF, add a post-processing Code node that scans for suspicious 9-17 digit strings not preceded by reference prefixes (check, ref, inv, #). Flag those transactions as category_source: 'review_required' so the client verifies them before they hit QuickBooks. This is a safety net in case Claude misses a negative constraint.
 - Rule-based categorization for known transaction types (IF/Switch nodes)
 - Claude Haiku categorizes unmatched transactions against chart of accounts
 - Push to QuickBooks via Conductor API. Tag AI-categorized items with memo "AI-CATEGORIZED — REVIEW NEEDED"
@@ -54,6 +56,7 @@
 - Pulls bank balances from Plaid (use balances.available, NOT balances.current)
 - Pulls uncleared checks from QuickBooks via Conductor
 - CRITICAL — Double-count prevention: before subtracting each uncleared check, cross-reference against last 72 hours of Plaid transactions. If a check amount matches a recent Plaid transaction (exact amount, within 5 days), exclude it from the outstanding total — it already cleared at the bank but hasn't been reconciled in QB yet.
+- Note: Plaid transaction data may lag several hours behind real-time (bank overnight batch processing). The cross-reference catches most double-counts but occasional false alerts are possible during early morning. Set alert thresholds slightly above true minimum to absorb timing gaps.
 - Calculate: Available = Bank Available Balance - Verified Uncleared Checks
 - If any account drops below its threshold, send urgent alert email with check-level detail
 - Daily digest email with HTML table showing all accounts
