@@ -5,3 +5,4 @@
 .claude/warden-edit-tracker
 clients/*/temp-*.json
 node_modules/
+.DS_Store
