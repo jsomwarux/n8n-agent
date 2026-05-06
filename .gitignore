@@ -3,6 +3,7 @@
 *.swp
 .claude/audit.log
 .claude/warden-edit-tracker
+.claude/settings.local.json
 clients/*/temp-*.json
 node_modules/
 .DS_Store
