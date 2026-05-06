@@ -252,23 +252,33 @@ If the plan has fewer than 3 steps, you may skip the approval step.
 
 ### Step 3: Search for the Right Nodes
 
-ALWAYS use the n8n-mcp tools to find nodes:
+Use n8n-mcp for ALL node discovery — never guess from memory.
 
-- Use search_nodes to find the right node for each task
-- Use get_node to learn the correct properties and options
-- NEVER guess at node names or properties from memory
-- NEVER invent node configurations — verify them with MCP tools
+- `search_nodes({query: "..."})` to find nodes by use case (supports OR/AND/FUZZY).
+- `get_node({nodeType, detail: "standard"})` FIRST for any node you'll configure
+  (~1–2 KB, shows required fields). Only escalate to `detail: "full"` if standard
+  is insufficient. Use `mode: "search_properties"` to find one specific property
+  inside a large schema.
+- Before building from scratch, run
+  `search_templates({searchMode: "by_task", ...})` or `searchMode: "by_nodes"` —
+  reuse a vetted pattern when one exists.
 
 ### Step 4: Build the Workflow
 
-- Use n8n-mcp tools to create the workflow
-- Follow the patterns from n8n-workflow-patterns skill
-- Use proper n8n expression syntax (from n8n-expression-syntax skill)
-- Reference credentials by their exact names:
-  - "Anthropic API" for Claude
-  - "OpenAI API" for GPT-4
-  - "Gemini API" for Gemini
-  - "xAI API" for Grok
+For every node you configure:
+
+1. `get_node(detail: "standard")` to confirm required fields and shape.
+2. Construct the node parameters.
+3. `validate_node({nodeType, config, mode: "minimal"})` to confirm required
+   fields are present. Catches the recurring `lessons.md` issues at zero cost:
+   IF combinator placement, `authentication: "none"` (string, not null),
+   `sendBody: true`, Webhook `webhookId`, `conditions.options.version`.
+4. For Code nodes, call
+   `tools_documentation({topic: "javascript_code_node_guide"})` (or
+   `python_code_node_guide`) before writing the body.
+
+Reference credentials by their exact names — never inline keys:
+"Anthropic API", "OpenAI API", "Gemini API", "xAI API".
 
 ### Step 5: Add Error Handling
 
@@ -280,26 +290,30 @@ EVERY workflow MUST have ALL of the following:
 - try/catch blocks in EVERY Code node — no exceptions
 - A Set node at the end that logs success/failure status
 
-### Step 6: Validate
+### Step 6: Validate (offline)
 
-- Use n8n-mcp validation tools to check the workflow
-- Fix any issues found
-- Validate again until the workflow passes with zero errors
-- Do NOT deploy a workflow that has validation errors
+Run `validate_workflow({workflow: <full JSON>})` on the assembled workflow.
+This checks node configs, connections, and expressions in one pass. Fix every
+error and re-run until it returns clean. Do NOT deploy with errors.
 
 ### Step 7: Save and Deploy
 
 - Save the workflow JSON to the workflows/ folder with a descriptive name
   (e.g., `wholesale-quote-parser-ensemble.json`)
-- Deploy to the n8n instance using the n8n-mcp API
-- Activate the workflow
+- Deploy with `n8n_create_workflow(...)` — NOT curl/Python.
+  See "Rules You Must Follow → n8n API Operations" for why.
+- After deploy, run `n8n_validate_workflow({id})` to validate against the live
+  instance. If errors are auto-fixable, run `n8n_autofix_workflow({id})`.
+- Activate the workflow.
 
 ### Step 8: Test
 
-- If the workflow has a webhook trigger, send a test request using curl
-- Provide the user with the exact curl command they can use to test
-- Verify the response matches the expected output format
-- Example test command format:
+- For webhook triggers: provide a curl command and run it to verify.
+- For other triggers: use `n8n_test_workflow(...)` to fire a run.
+- Inspect the result with
+  `n8n_executions({action: "list", workflowId, limit: 1})` then
+  `n8n_executions({action: "get", id})` if anything failed.
+- Example webhook test command:
 ```bash
 curl -X POST http://localhost:5678/webhook/WORKFLOW_PATH \
   -H "Content-Type: application/json" \
@@ -324,6 +338,36 @@ curl -X POST http://localhost:5678/webhook/WORKFLOW_PATH \
 - ALWAYS commit after a successful deployment.
 - No stubs, no placeholders, no TODOs — complete implementations only.
 - No unnecessary abstractions — keep it simple.
+
+### n8n API Operations (use MCP, not curl/Python)
+
+n8n-mcp is the source of truth for every n8n API operation. Use the MCP tools.
+Do NOT fall back to `curl` + `python3` against the n8n REST API except when an
+MCP tool is genuinely missing for the operation. Most past failures
+(`tasks/lessons.md` #34, #36, #40, #59, #61, #62, #84) came from manual API
+handling — control-char stripping for `json.load`, allowed-fields stripping
+before PUT, orphaned duplicate workflows on retry, stale local copies. The MCP
+tools handle all of this for free.
+
+| Operation | Use this tool |
+|---|---|
+| Create a workflow | `n8n_create_workflow` |
+| Read a workflow | `n8n_get_workflow({id, mode: "structure"})` (or `"full"`) |
+| Update a workflow (full replace) | `n8n_update_full_workflow` |
+| Update a workflow (diff/partial) | `n8n_update_partial_workflow` |
+| Delete a workflow | `n8n_delete_workflow` |
+| List workflows | `n8n_list_workflows` |
+| Validate live workflow | `n8n_validate_workflow({id})` |
+| Auto-fix common issues | `n8n_autofix_workflow({id})` |
+| Trigger a workflow | `n8n_test_workflow` |
+| Inspect executions | `n8n_executions` |
+| Version history / rollback | `n8n_workflow_versions` |
+| Manage credentials | `n8n_manage_credentials` |
+| Health check | `n8n_health_check` |
+
+When iterating on an existing deployed workflow, prefer
+`n8n_update_partial_workflow` (diff-based) — it sidesteps the
+`executeData`/`webhookId`/`versionId` strip-before-PUT problem entirely.
 
 ### Ensemble Rules (when building 4-LLM workflows)
 
@@ -358,7 +402,10 @@ Use these two files to track work:
 ## Available Tools
 
 ### MCP Servers
-- **n8n-mcp**: Search nodes, validate workflows, create/deploy workflows
+- **n8n-mcp**: 21 tools covering node discovery, schema lookup, node + workflow
+  validation, template search, and the full n8n REST API. Self-documenting via
+  `tools_documentation({topic: "<tool_name>", depth: "full"})` —
+  call this when uncertain about a tool's exact parameters instead of guessing.
 - **context7**: Up-to-date library documentation (use instead of fetching URLs)
 
 ### Custom Skills
