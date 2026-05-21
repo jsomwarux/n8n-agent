@@ -9,43 +9,76 @@
 - Never install n8n on a client's production server. IT teams (like Navid) will resist installing Docker, opening ports, or giving admin access on machines running QuickBooks, file shares, or other critical systems. ThreatLocker and similar endpoint security tools will block unapproved software.
 - Always propose a dedicated mini PC (Beelink, Mac Mini, Intel NUC). It eliminates every security objection in one move: nothing touches the production server, no ThreatLocker issues, no firewall changes on their infrastructure, fully reversible (unplug the box and their server is untouched).
 - Budget $300-600 for the hardware. Include it as a line item in the proposal under "third-party costs paid by client."
-- Set up the dedicated machine at home before delivering to the client site. Install OS, Docker, n8n, Tailscale, test everything. Delivery to the client is just plugging in power and ethernet.
+- Set up the dedicated machine at home before delivering to the client site. Install Node.js, n8n, Tailscale, configure the Windows service, test everything. Delivery to the client is just plugging in power and ethernet.
 
-### WSL2 + Docker on Windows — The Full Pain Guide
-- If the dedicated machine runs Windows, n8n runs inside Docker inside WSL2. This works but has three critical gotchas that MUST be solved before deployment:
+### DO NOT USE WSL2 + Docker on Windows for Production n8n
 
-**Gotcha 1: WSL2 auto-terminates when idle.** If no SSH or terminal sessions are connected, WSL2 shuts itself down after a timeout, killing Docker and n8n. Scheduled triggers (like a 7am daily workflow) will never fire because n8n isn't running.
-- Fix: Create `C:\Users\[USERNAME]\.wslconfig` with:
-```
-[wsl2]
-vmIdleTimeout=-1
-```
-- This prevents WSL2 from auto-shutting down. Requires a full Windows reboot to take effect.
+WSL2 on Windows 11 Home is fundamentally unreliable for always-on background services. After extensive troubleshooting, the following ALL failed to keep n8n running 24/7:
+- `vmIdleTimeout=-1` in .wslconfig — doesn't work on all Windows 11 builds
+- Startup .bat files and scheduled tasks to start WSL/Docker — unreliable execution on boot
+- Keepalive scheduled tasks pinging WSL every 5 minutes — WSL still dies
+- `netsh interface portproxy` — breaks after every WSL restart, connection resets from Tailscale traffic
+- `networkingMode=mirrored` in .wslconfig — doesn't work on all Windows versions
+- Tailscale serve on Windows proxying to WSL localhost — returns 502 when WSL localhost forwarding breaks
+- Tailscale installed inside WSL2 — WSL still dies overnight taking Tailscale with it
+- Docker `--restart always` — only works if Docker is running; Docker dies when WSL dies
 
-**Gotcha 2: WSL2/Docker/n8n don't auto-start on boot.** Windows boots and logs in, but WSL2 doesn't start automatically. Docker (inside WSL2) doesn't start. n8n doesn't start. The machine looks online (Tailscale connects) but n8n is dead.
-- Fix: Create a .bat file and register it as a scheduled task:
-```
-echo wsl -u root -- bash -c "service docker start && docker start n8n" > C:\Users\[USERNAME]\start-n8n.bat
-schtasks /create /tn "Start n8n" /tr C:\Users\[USERNAME]\start-n8n.bat /sc onlogon /rl highest /f
-```
-- The Startup folder approach (`AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\`) is less reliable than scheduled tasks on Windows 11.
-- Always test with a full reboot after setting this up. SSH in after reboot and verify `docker ps` shows n8n running.
+**The result:** n8n was never running at 7am. The schedule trigger silently missed every day. Days of debugging produced no stable solution within the WSL2/Docker stack.
 
-**Gotcha 3: WSL2 networking is isolated from Windows.** Port 5678 inside WSL2 is NOT accessible from outside the machine. Traffic from Tailscale or the local network cannot reach WSL2 directly.
-- The `netsh interface portproxy` approach (forwarding Windows port 5678 to WSL2's internal IP) works for localhost but often fails for external traffic (Tailscale, LAN). Connection resets are common.
-- WSL2's internal IP changes on every restart, so port proxy configurations break after reboots.
-- `networkingMode=mirrored` in .wslconfig is theoretically the fix but doesn't work on all Windows versions.
-- **The working solution: Tailscale serve.** Run `tailscale serve --bg 5678` on the Windows host. This tells Tailscale to accept HTTPS connections on port 443 and proxy them to localhost:5678. WSL2's automatic localhost forwarding handles the last hop into WSL2. Access n8n at `https://[hostname].ts.net` from any device on the Tailscale network.
-- Tailscale serve with `--bg` persists across reboots.
+### The Working Solution: Native Windows Service (Node.js + NSSM)
+
+Install n8n directly on Windows using Node.js (no WSL2, no Docker). Run it as a Windows service using NSSM. This gives the same reliability as Tailscale — which ran flawlessly throughout the entire WSL2 debugging saga because it's a native Windows service.
+
+**Architecture:**
+```
+Windows Service Control Manager → NSSM → Node.js → n8n → local .n8n data folder
+```
+
+**Key setup steps:**
+1. Disable Windows sleep/hibernate/standby: `powercfg /change standby-timeout-ac 0` and `powercfg /hibernate off`
+2. Install Node.js LTS on Windows via winget or manual MSI installer
+3. Install n8n locally in a project folder (not globally): `cd C:\n8n\app && npm init -y && npm install n8n@<VERSION>`
+4. Create a startup script (`C:\n8n\start-n8n.cmd`) that sets environment variables and runs n8n
+5. Use NSSM 2.24-101+ (not the old 2.24 stable — has Windows 11 issues) to register n8n as a Windows service
+6. Configure auto-restart on crash via NSSM and `sc.exe failure` settings
+7. n8n listens on 0.0.0.0:5678, accessible directly via the Windows Tailscale IP
+
+**Critical for data migration from Docker:** If migrating from an existing Docker n8n instance, copy the ENTIRE `.n8n` directory from the Docker volume (including `database.sqlite` and the `config` file containing the encryption key) to `C:\n8n\.n8n\`. Set `N8N_USER_FOLDER=C:\n8n` so n8n finds the data. This preserves all workflows, credentials, and OAuth tokens — no need to recreate anything.
+
+**Why local install, not global npm:** Global npm installs have PATH issues when running under Windows service accounts. A local install in `C:\n8n\app\node_modules\.bin\n8n.cmd` works reliably regardless of which user account the service runs under.
+
+**Why NSSM 2.24-101+:** The old stable NSSM 2.24 has known service start issues on Windows 10 Creators Update and newer. Use the pre-release build from `https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip`.
+
+**Reference commands:**
+```
+C:\n8n\nssm.exe install n8n C:\Windows\System32\cmd.exe "/c C:\n8n\start-n8n.cmd"
+C:\n8n\nssm.exe set n8n AppDirectory C:\n8n\app
+C:\n8n\nssm.exe set n8n AppStdout C:\n8n\logs\n8n-out.log
+C:\n8n\nssm.exe set n8n AppStderr C:\n8n\logs\n8n-err.log
+C:\n8n\nssm.exe set n8n Start SERVICE_AUTO_START
+C:\n8n\nssm.exe set n8n AppExit Default Restart
+sc.exe failure n8n actions= restart/60000/restart/60000/restart/60000 reset= 86400
+C:\n8n\nssm.exe start n8n
+```
 
 ### Tailscale Setup
-- Install Tailscale on Windows (not inside WSL2). It runs as a Windows service and auto-starts on boot.
-- The Tailscale MagicDNS hostname (e.g., `desktop-xxx.tailaf2fd2.ts.net`) is a valid domain that works with Google OAuth, Let's Encrypt certificates, and browser security policies. Raw Tailscale IPs (100.x.x.x) do not.
-- Use `tailscale serve --bg 5678` for remote n8n access. This provides HTTPS with a valid Let's Encrypt certificate automatically.
-- Day-to-day access: `http://[hostname].ts.net:5678` works for the n8n dashboard. The HTTPS endpoint (port 443 via Tailscale serve) may render a blank page due to n8n JavaScript asset loading issues, but the API/OAuth callbacks work fine over HTTPS.
+- Install Tailscale on Windows only. It runs as a Windows service and auto-starts on boot.
+- n8n running natively on Windows listens on 0.0.0.0:5678, which is directly accessible via the Windows Tailscale IP (e.g., `http://100.94.117.7:5678`).
+- No port proxy, no Tailscale serve, no WSL networking — direct access.
+- For Google OAuth HTTPS: use `tailscale serve --bg 5678` on Windows. Since n8n is now a real Windows-local process, Tailscale serve reliably proxies HTTPS to localhost:5678 without the WSL2 forwarding issues.
+
+### Windows Power Management — CRITICAL
+- Disable sleep, hibernate, and standby BEFORE deploying any always-on service. If the machine enters Modern Standby or sleep overnight, nothing runs at 7am — not even a Windows service.
+```
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+powercfg /hibernate off
+powercfg /change monitor-timeout-ac 0
+```
+- This should be Step 0 of any dedicated machine setup. We missed this initially and it may have contributed to overnight failures.
 
 ### Windows Auto-Login
-- Required so that after a power loss + reboot, Windows logs in without human intervention, which triggers the startup script that launches WSL/Docker/n8n.
+- Required so that after a power loss + reboot, Windows logs in without human intervention.
 - Configure via registry:
 ```powershell
 $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
@@ -54,6 +87,7 @@ Set-ItemProperty -Path $RegPath -Name "DefaultUserName" -Value "[USERNAME]"
 Set-ItemProperty -Path $RegPath -Name "DefaultPassword" -Value "[PASSWORD]"
 ```
 - Also configure BIOS "Restore on AC Power Loss" to "Power On" so the machine turns itself on after a power outage without someone pressing the button. Access BIOS by pressing Delete or F2 during boot.
+- Note: with NSSM configured to run as a Windows service with `SERVICE_AUTO_START`, n8n starts at boot even before any user logs in. Auto-login is still useful for other startup tasks and remote desktop access.
 
 ### Windows Firewall
 - Firewall rules need to allow inbound TCP on port 5678:
@@ -213,20 +247,23 @@ if (DRY_RUN) {
 ## DEPLOYMENT CHECKLIST — Use for Every Client
 
 ### Before Delivering the Dedicated Machine
-- [ ] OS installed and configured
-- [ ] Docker installed and running
-- [ ] n8n container created with all environment variables
-- [ ] Tailscale installed and connected to your network
-- [ ] `tailscale serve --bg 5678` configured
-- [ ] n8n accessible from your MacBook via Tailscale
-- [ ] .wslconfig with vmIdleTimeout=-1 (if Windows/WSL2)
-- [ ] Startup script/scheduled task to auto-start WSL/Docker/n8n on boot
-- [ ] Windows auto-login configured (if Windows)
+- [ ] Windows sleep/hibernate/standby disabled via powercfg (Step 0 — do this FIRST)
+- [ ] Windows timezone set to Eastern: `tzutil /s "Eastern Standard Time"`
+- [ ] Node.js LTS installed on Windows
+- [ ] n8n installed locally in `C:\n8n\app` (same version as any existing instance being migrated)
+- [ ] `.n8n` data directory in place at `C:\n8n\.n8n` (migrated from Docker or fresh)
+- [ ] `start-n8n.cmd` script created with correct environment variables
+- [ ] NSSM 2.24-101+ installed; n8n registered as Windows service with auto-start and auto-restart
+- [ ] Tailscale installed on Windows and connected
+- [ ] n8n accessible from MacBook via Windows Tailscale IP (`http://[TAILSCALE_IP]:5678`)
+- [ ] Windows firewall allows inbound TCP 5678
+- [ ] Windows auto-login configured via registry
+- [ ] BIOS "Restore on AC Power Loss" set to "Power On"
 - [ ] Home WiFi network forgotten
-- [ ] Full reboot test — machine comes up and n8n is accessible without intervention
+- [ ] Full reboot test — machine comes up, n8n service starts, dashboard accessible without intervention
 - [ ] 20-minute idle test — close laptop, wait, verify n8n still accessible
-- [ ] Google OAuth app published to Production
-- [ ] All Google credentials re-authenticated after publishing
+- [ ] Google OAuth app published to Production (requires HTTPS redirect URI via Tailscale serve)
+- [ ] All Google credentials working after migration (encryption key preserved)
 
 ### Before Going Live on Any Workflow
 - [ ] DRY_RUN = true, BATCH_LIMIT = 5 verified in Code node
