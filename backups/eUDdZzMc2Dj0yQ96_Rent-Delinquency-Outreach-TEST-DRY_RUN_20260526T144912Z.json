@@ -1,0 +1,996 @@
+{
+    "updatedAt": "2026-05-26T13:56:53.142Z",
+    "createdAt": "2026-05-26T13:33:51.168Z",
+    "id": "eUDdZzMc2Dj0yQ96",
+    "name": "Altmark \u2014 Rent Delinquency Outreach (TEST/DRY_RUN)",
+    "description": null,
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+        {
+            "parameters": {
+                "binaryPropertyName": "attachment_0",
+                "fileFormat": "xlsx",
+                "options": {
+                    "headerRow": true,
+                    "includeEmptyCells": true,
+                    "range": "10"
+                }
+            },
+            "id": "070187ae-fc24-4f33-afbd-d01262c14d4b",
+            "name": "Parse Excel",
+            "type": "n8n-nodes-base.spreadsheetFile",
+            "typeVersion": 2,
+            "position": [
+                -1808,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// STEP 3 \u2014 Entity Association (the critical parsing step)\n// Input: rows from the Spreadsheet File node (header row 11 \u2192 keys: Unit, Name,\n// Amount Receivable, Last Payment, Payment Amount, 0-30, 30+, Rent, Primary Tenant Email).\n// Output: ONE item per tenant data row, each with _entity_name and _property_address\n// attached. Entity-header rows and subtotal/grand-total rows are consumed/skipped.\ntry {\n  let currentEntity = '';\n  let currentAddress = '';\n  const tenantRows = [];\n\n  for (const item of items) {\n    const j = item.json || {};\n    const unit = (j['Unit'] || '').toString().trim();\n    const name = (j['Name'] || '').toString().trim();\n    const amountReceivable = j['Amount Receivable'];\n\n    // Skip fully empty rows\n    if (!unit && !name && (amountReceivable === undefined || amountReceivable === null || amountReceivable === '')) {\n      continue;\n    }\n\n    // Entity header row: Column A populated, Column B (Name) empty, contains \" - \"\n    if (unit && !name && unit.includes(' - ')) {\n      const parts = unit.split(' - ');\n      currentEntity = parts[0].trim();\n      currentAddress = parts.slice(1).join(' - ').trim();\n      continue;\n    }\n\n    // Grand total row: Unit === \"Total\"\n    if (unit === 'Total') {\n      continue;\n    }\n\n    // Subtotal rows: no Name value (numeric-only rows after each entity group)\n    if (!name || name === 'Total') {\n      continue;\n    }\n\n    // Tenant data row \u2014 attach the current entity context\n    j._entity_name = currentEntity;\n    j._property_address = currentAddress;\n    tenantRows.push({ json: j });\n  }\n\n  return tenantRows;\n} catch (err) {\n  // Surface a clear error so the Error Trigger path can report it\n  throw new Error('Step 3 entity association failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "55099125-75d3-44bc-b218-cfc3ba87397e",
+            "name": "Step 3 - Entity Association",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1600,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n// SAFETY FLAGS \u2014 single source of truth. Change these to go live.\n//   DRY_RUN=true  \u2192 every outreach email is redirected to TEST_EMAIL,\n//                   all CC fields are emptied, log source is tagged \"test\",\n//                   and the summary subject is prefixed \"[TEST MODE]\".\n//   BATCH_LIMIT=5 \u2192 if more than 5 tenants qualify, NO emails are sent;\n//                   an alert is sent to TEST_EMAIL instead.\n// Going live requires THREE separate edits (do them one at a time):\n//   1) swap the Gmail Trigger subject to the real AppFolio subject\n//   2) set DRY_RUN = false\n//   3) raise BATCH_LIMIT to the expected volume\n// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\nconst DRY_RUN = true;\nconst BATCH_LIMIT = 5;\nconst TEST_EMAIL = 'jtsomwaru@gmail.com';\n\ntry {\n  for (const item of items) {\n    item.json._DRY_RUN = DRY_RUN;\n    item.json._BATCH_LIMIT = BATCH_LIMIT;\n    item.json._TEST_EMAIL = TEST_EMAIL;\n  }\n  return items;\n} catch (err) {\n  throw new Error('Safety Flags node failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "7a5a10f5-3eb1-4842-a732-0da83ea02b9b",
+            "name": "Safety Flags",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -1408,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "documentId": {
+                    "__rl": true,
+                    "value": "1YoE91mQSxP2yGaYPIWZtDILhULjPXIXIGyxxazKvqoo",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Report Processing Log",
+                    "mode": "name"
+                },
+                "options": {}
+            },
+            "id": "0eab869b-4c19-4aaa-9046-08d6941fc644",
+            "name": "Read Processing Log",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                -1200,
+                192
+            ],
+            "executeOnce": true,
+            "alwaysOutputData": true,
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "qnmyL4iPKr6G2c3A",
+                    "name": "Google Sheets Credential 1"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "documentId": {
+                    "__rl": true,
+                    "value": "1YoE91mQSxP2yGaYPIWZtDILhULjPXIXIGyxxazKvqoo",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Outreach Log",
+                    "mode": "name"
+                },
+                "options": {}
+            },
+            "id": "683a327b-fed3-4414-978e-e76cb2517342",
+            "name": "Read Outreach Log",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                -1008,
+                192
+            ],
+            "executeOnce": true,
+            "alwaysOutputData": true,
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "qnmyL4iPKr6G2c3A",
+                    "name": "Google Sheets Credential 1"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "documentId": {
+                    "__rl": true,
+                    "value": "1YoE91mQSxP2yGaYPIWZtDILhULjPXIXIGyxxazKvqoo",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Do Not Contact",
+                    "mode": "name"
+                },
+                "options": {}
+            },
+            "id": "161f5b5b-86c4-4d4d-b389-8b9dfafe444f",
+            "name": "Read Do Not Contact",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                -800,
+                192
+            ],
+            "executeOnce": true,
+            "alwaysOutputData": true,
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "qnmyL4iPKr6G2c3A",
+                    "name": "Google Sheets Credential 1"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "documentId": {
+                    "__rl": true,
+                    "mode": "id",
+                    "value": "17ZHhmjSoUg7KKBD4jnvzlcH88lqlyEHCORTzBTpJISY"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "name",
+                    "value": "COI Alert Log"
+                },
+                "options": {}
+            },
+            "id": "01940b66-d369-43f4-bd10-81d2b6037b63",
+            "name": "Read COI Alert Log",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                -608,
+                192
+            ],
+            "executeOnce": true,
+            "alwaysOutputData": true,
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "qnmyL4iPKr6G2c3A",
+                    "name": "Google Sheets Credential 1"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// PROCESS & DECIDE \u2014 consolidates playbook Steps 4\u201312.\n// Pulls the 112 tenant rows (with safety flags) and the four Google Sheets via\n// node references, then computes: invalid-row filtering, balance ratio, 2x\n// threshold, data-error flag (ratio>50), batch limit, Do-Not-Contact, manual\n// contact, the escalation state machine (initial\u2192follow_up\u2192final\u2192escalation),\n// COI overlap, lease-vs-license wording, DRY_RUN routing, and the daily summary.\n// Output: ONE item { _control, tenantsToEmail[], summary }.\ntry {\n  // ---- gather inputs via explicit node references (Sheets/Code reset $json) ----\n  const tenantItems = $('Safety Flags').all().map(i => i.json).filter(j => (j['Name'] || '').toString().trim());\n  const flagsSrc = $('Safety Flags').first().json || {};\n  const DRY_RUN = flagsSrc._DRY_RUN === true;\n  const BATCH_LIMIT = Number(flagsSrc._BATCH_LIMIT) || 5;\n  const TEST_EMAIL = flagsSrc._TEST_EMAIL || 'jtsomwaru@gmail.com';\n\n  const safeAll = (name) => { try { return $(name).all().map(i => i.json || {}); } catch (e) { return []; } };\n  const processingLog = safeAll('Read Processing Log');\n  const outreachLog = safeAll('Read Outreach Log');\n  const dncList = safeAll('Read Do Not Contact');\n  const coiLog = safeAll('Read COI Alert Log');\n\n  let messageId = '';\n  try { messageId = ($('Gmail Trigger').first().json.id || '').toString(); } catch (e) { messageId = ''; }\n\n  const today = DateTime.now().setZone('America/New_York');\n  const todayStr = today.toFormat('yyyy-LL-dd');\n\n  // license-agreement entities (use \"license agreement\" instead of \"lease\")\n  const licenseEntities = ['Markland 486 LLC', 'Markland 713 LLC', 'Bronx Canvas LLC', 'Bronx Canvas Canal LLC'];\n\n  const key = (n, u) => (n || '').toString().trim().toLowerCase() + '|' + (u || '').toString().trim().toLowerCase();\n\n  // ---- already-processed check (dedupe by Gmail message id) ----\n  const alreadyProcessed = !!messageId && processingLog.some(r =>\n    (r.email_message_id || '').toString().trim() === messageId);\n\n  // ---- Do-Not-Contact set ----\n  const dncSet = new Set(dncList\n    .filter(r => (r.tenant_name || '').toString().trim())\n    .map(r => key(r.tenant_name, r.unit)));\n\n  // ---- COI overlap (tenants alerted today) ----\n  const coiTodaySet = new Set(coiLog\n    .filter(r => {\n      const d = (r.date_sent || r.alert_date || r.date || r.date_added || '').toString().slice(0, 10);\n      return d === todayStr;\n    })\n    .map(r => key(r.tenant_name || r.name || r['Tenant Name'], r.unit || r.Unit)));\n\n  // ---- index outreach log by tenant key ----\n  const outreachByKey = {};\n  for (const r of outreachLog) {\n    const tn = r.tenant_name; const u = r.unit;\n    if (!(tn || '').toString().trim()) continue;\n    const k = key(tn, u);\n    (outreachByKey[k] = outreachByKey[k] || []).push(r);\n  }\n  const daysSince = (dstr) => {\n    if (!dstr) return null;\n    const d = DateTime.fromFormat((dstr || '').toString().slice(0, 10), 'yyyy-LL-dd', { zone: 'America/New_York' });\n    if (!d.isValid) return null;\n    return Math.floor(today.diff(d, 'days').days);\n  };\n\n  // ---- accumulators ----\n  const toEmail = [];\n  const noEmail = [], badRent = [], dataError = [];\n  const doNotContact = [], manuallyContacted = [], recentlyContacted = [];\n  const escalationNeeded = [], coiOverlap = [];\n  let belowThreshold = 0;\n  let thresholdPassers = 0; // valid + ratio in [2,50]  (batch-limit basis, per Step 8)\n\n  const tmin = (t) => ({ name: t.tenant_name, unit: t.unit, entity: t.entity_name, property: t.property_address });\n\n  for (const j of tenantItems) {\n    const name = (j['Name'] || '').toString().trim();\n    const email = (j['Primary Tenant Email'] || '').toString().trim();\n    const unit = (j['Unit'] || '').toString().trim();\n    const entity = (j._entity_name || '').toString().trim();\n    const address = (j._property_address || '').toString().trim();\n    const rent = parseFloat(j['Rent']) || 0;\n    const balance = parseFloat(j['Amount Receivable']) || 0;\n\n    const base = { tenant_name: name, entity_name: entity, property_address: address, unit: unit,\n      monthly_rent: rent, accrued_balance: balance };\n\n    // Step 5a \u2014 no email\n    if (!email) { noEmail.push(tmin(base)); continue; }\n    // Step 5b \u2014 $0 or negative rent (cannot compute ratio)\n    if (rent <= 0) { badRent.push(tmin(base)); continue; }\n\n    // Step 6 \u2014 ratio\n    const ratio = Math.round((balance / rent) * 100) / 100;\n    base.balance_ratio = ratio;\n\n    // Step 6 \u2014 data error (ratio > 50)\n    if (ratio > 50) { dataError.push({ ...tmin(base), balance_ratio: ratio }); continue; }\n    // Step 7 \u2014 threshold 2x\n    if (ratio < 2) { belowThreshold++; continue; }\n\n    // passed threshold and data-valid \u2192 counts toward batch limit (Step 8 basis)\n    thresholdPassers++;\n\n    // Step 9 \u2014 Do Not Contact\n    if (dncSet.has(key(name, unit))) { doNotContact.push(tmin(base)); continue; }\n\n    // Step 10 \u2014 outreach log: manual contact + cooldown/escalation\n    const entries = (outreachByKey[key(name, unit)] || []).slice()\n      .sort((a, b) => ((b.date_sent || '') + '').localeCompare((a.date_sent || '') + ''));\n    if (entries.some(e => (e.manual_contact || '').toString().trim().toLowerCase() === 'yes')) {\n      manuallyContacted.push(tmin(base)); continue;\n    }\n    const last = entries[0] || null;\n    let stage = null;\n    if (!last) {\n      stage = 'initial_notice';\n    } else {\n      const lastStage = (last.escalation_stage || '').toString().trim();\n      const d = daysSince(last.date_sent);\n      if (lastStage === 'initial_notice' && d !== null && d >= 14) stage = 'follow_up';\n      else if (lastStage === 'follow_up' && d !== null && d >= 7) stage = 'final_notice';\n      else if (lastStage === 'final_notice' && d !== null && d >= 7) stage = 'escalation_needed';\n      else { recentlyContacted.push({ ...tmin(base), last_stage: lastStage, days_since: d }); continue; }\n    }\n\n    if (stage === 'escalation_needed') {\n      const d = daysSince(last && last.date_sent);\n      escalationNeeded.push({ ...tmin(base), days_since_final: d });\n      continue;\n    }\n\n    // COI overlap (informational \u2014 still send)\n    if (coiTodaySet.has(key(name, unit))) coiOverlap.push(tmin(base));\n\n    // Step 12 \u2014 lease vs license agreement\n    const leaseOrLicense = licenseEntities.includes(entity) ? 'license agreement' : 'lease';\n\n    // ---- build the outreach email (DRAFT placeholder templates) ----\n    const money = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\n    const disregard = 'If you have already made this payment, please disregard this message.';\n    let subject = '', body = '';\n    const head = `${name}\\n${address}\\nUnit ${unit}`;\n    const figures = `Total balance due: ${money(balance)}\\nMonthly rent: ${money(rent)}`;\n    if (stage === 'initial_notice') {\n      subject = `Past-Due Balance Notice \u2014 ${address} Unit ${unit}`;\n      body = `[DRAFT TEMPLATE \u2014 Initial Notice \u2014 pending final copy from Yair]\\n\\nDear ${name},\\n\\nOur records show a past-due balance on your account for the property below.\\n\\n${head}\\n\\n${figures}\\n\\nPlease arrange payment at your earliest convenience. ${disregard}\\n\\nAltmark Group`;\n    } else if (stage === 'follow_up') {\n      subject = `Second Notice: Past-Due Balance \u2014 ${address} Unit ${unit}`;\n      body = `[DRAFT TEMPLATE \u2014 Follow-Up Notice \u2014 pending final copy from Yair]\\n\\nDear ${name},\\n\\nThis is a follow-up to our recent notice regarding the past-due balance on your account, which remains outstanding.\\n\\n${head}\\n\\n${figures}\\n\\nPlease remit payment promptly. ${disregard}\\n\\nAltmark Group`;\n    } else { // final_notice\n      subject = `FINAL NOTICE: Past-Due Balance \u2014 ${address} Unit ${unit}`;\n      body = `[DRAFT TEMPLATE \u2014 Final Notice \u2014 pending final copy from Yair]\\n\\nDear ${name},\\n\\nDespite previous notices, the past-due balance on your account remains unpaid. This is a final notice. Continued non-payment may constitute a violation of your ${leaseOrLicense}.\\n\\n${head}\\n\\n${figures}\\n\\nImmediate payment is required. ${disregard}\\n\\nAltmark Group`;\n    }\n\n    toEmail.push({\n      tenant_name: name, entity_name: entity, property_address: address, unit: unit,\n      monthly_rent: rent, accrued_balance: balance, balance_ratio: ratio,\n      escalation_stage: stage, lease_or_license: leaseOrLicense,\n      tenant_email: email,\n      _send_to: DRY_RUN ? TEST_EMAIL : email,\n      _cc: DRY_RUN ? '' : 'yair@altmarkgroup.com, matt@altmarkgroup.com',\n      subject: (DRY_RUN ? '[TEST] ' : '') + subject,\n      body: body,\n      source: DRY_RUN ? 'test' : 'scheduled',\n      date_sent: todayStr,\n    });\n  }\n\n  const batchExceeded = thresholdPassers > BATCH_LIMIT;\n  const proceed = !alreadyProcessed && !batchExceeded;\n  const tenantsToEmail = proceed ? toEmail : [];\n  const skippedAll = noEmail.length + badRent.length + dataError.length + doNotContact.length +\n    manuallyContacted.length + recentlyContacted.length + escalationNeeded.length;\n\n  const summary = {\n    today: todayStr,\n    dry_run: DRY_RUN,\n    emails_sent: tenantsToEmail.map(t => ({ name: t.tenant_name, property: t.property_address, unit: t.unit,\n      balance: t.accrued_balance, rent: t.monthly_rent, ratio: t.balance_ratio, stage: t.escalation_stage })),\n    escalation_needed: escalationNeeded,\n    recently_contacted: recentlyContacted,\n    manually_contacted: manuallyContacted,\n    do_not_contact: doNotContact,\n    coi_overlap: coiOverlap,\n    no_email: noEmail,\n    bad_rent: badRent,\n    data_error: dataError,\n    totals: {\n      tenants_in_report: tenantItems.length,\n      meeting_threshold: thresholdPassers,\n      outreach_sent: tenantsToEmail.length,\n      skipped_all: skippedAll,\n      below_threshold: belowThreshold,\n    },\n  };\n\n  const _control = {\n    already_processed: alreadyProcessed,\n    batch_exceeded: batchExceeded,\n    batch_size: thresholdPassers,\n    batch_limit: BATCH_LIMIT,\n    proceed: proceed,\n    dry_run: DRY_RUN,\n    test_email: TEST_EMAIL,\n    message_id: messageId,\n    today: todayStr,\n    tenants_in_report: tenantItems.length,\n    emails_sent_count: tenantsToEmail.length,\n  };\n\n  return [{ json: { _control, tenantsToEmail, summary } }];\n} catch (err) {\n  throw new Error('Process & Decide failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "f8fc33d7-6924-4e4f-b960-50a368ee0172",
+            "name": "Process & Decide",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -400,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "n-ifproc-c1",
+                            "leftValue": "={{ $json._control.already_processed }}",
+                            "rightValue": true,
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "3b6357bc-5f2a-499b-b3b1-9ac9bc04a456",
+            "name": "Already Processed?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                -208,
+                192
+            ]
+        },
+        {
+            "parameters": {},
+            "id": "af4cfe93-0a73-48b1-b32d-5f66c262807f",
+            "name": "Stop - Already Processed",
+            "type": "n8n-nodes-base.noOp",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2
+                    },
+                    "conditions": [
+                        {
+                            "id": "n-ifbatch-c1",
+                            "leftValue": "={{ $json._control.batch_exceeded }}",
+                            "rightValue": true,
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "2c0a9778-647c-4be3-8b93-aa944332332f",
+            "name": "Batch Exceeded?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [
+                0,
+                240
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// BUILD BATCH ALERT \u2014 fired when more tenants qualify than BATCH_LIMIT allows.\n// No outreach is sent; this alert goes to TEST_EMAIL so a human reviews first.\ntry {\n  const c = ($json && $json._control) || {};\n  const subject = `[ACTION NEEDED] Rent Delinquency batch size ${c.batch_size} exceeds limit of ${c.batch_limit}`;\n  const body = `The rent delinquency workflow stopped without sending any emails.\\n\\n` +\n    `Qualifying tenants (met 2x threshold, valid email/rent): ${c.batch_size}\\n` +\n    `Current BATCH_LIMIT: ${c.batch_limit}\\n` +\n    `Date: ${c.today}\\n\\n` +\n    `No outreach emails were sent. If this volume is expected (e.g. first run / backlog), ` +\n    `raise BATCH_LIMIT in the Safety Flags node and re-run. Otherwise investigate the report.`;\n  return [{ json: { _send_to: c.test_email || 'jtsomwaru@gmail.com', _cc: '', subject, body } }];\n} catch (err) {\n  throw new Error('Build Batch Alert failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "c1206b92-e13e-41c6-b578-8d4192c6eab6",
+            "name": "Build Batch Alert",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                208,
+                64
+            ]
+        },
+        {
+            "parameters": {
+                "sendTo": "={{ $json._send_to }}",
+                "subject": "={{ $json.subject }}",
+                "emailType": "text",
+                "message": "={{ $json.body }}",
+                "options": {
+                    "appendAttribution": false
+                }
+            },
+            "id": "12556b19-b1e8-4db6-b96c-a123f6c4c036",
+            "name": "Send Batch Alert",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2.2,
+            "position": [
+                400,
+                64
+            ],
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 5000,
+            "webhookId": "870ca3af-b462-43fd-9956-e054d2be55f7",
+            "credentials": {
+                "gmailOAuth2": {
+                    "id": "1KvTTeWhttAclTVM",
+                    "name": "Altmark Insurance Gmail"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "jsCode": "// EXPLODE TENANTS \u2014 turn the single decision item into one item per tenant to\n// email (0..N). Downstream: log row \u2192 append \u2192 send. Empty list => no sends.\ntry {\n  const ctrl = ($json && $json._control) || {};\n  const list = ($json && Array.isArray($json.tenantsToEmail)) ? $json.tenantsToEmail : [];\n  if (!ctrl.proceed || list.length === 0) return [];\n  return list.map(t => ({ json: t, pairedItem: { item: 0 } }));\n} catch (err) {\n  throw new Error('Explode Tenants failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "fc911ba8-f082-478b-b73c-78da56d1226e",
+            "name": "Explode Tenants",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                208,
+                304
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForEachItem",
+                "jsCode": "// PREP OUTREACH LOG ROW \u2014 flatten ONE tenant into the exact column names of the\n// \"Rent Delinquency Outreach Log\" sheet. Runs once per item (auto-paired) so the\n// downstream Gmail send can still reference $('Explode Tenants').item.\n// Log is written BEFORE the email is sent (prevents duplicate sends on retry).\ntry {\n  const t = $json || {};\n  return {\n    json: {\n      tenant_name: t.tenant_name || '',\n      entity_name: t.entity_name || '',\n      property_address: t.property_address || '',\n      unit: t.unit || '',\n      monthly_rent: t.monthly_rent != null ? t.monthly_rent : '',\n      accrued_balance: t.accrued_balance != null ? t.accrued_balance : '',\n      balance_ratio: t.balance_ratio != null ? t.balance_ratio : '',\n      escalation_stage: t.escalation_stage || '',\n      date_sent: t.date_sent || '',\n      source: t.source || '',\n      manual_contact: '',\n    },\n  };\n} catch (err) {\n  throw new Error('Prep Outreach Log Row failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "93de334e-3c5d-47fa-976e-4a58d0f2c943",
+            "name": "Prep Outreach Log Row",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                400,
+                304
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "documentId": {
+                    "__rl": true,
+                    "value": "1YoE91mQSxP2yGaYPIWZtDILhULjPXIXIGyxxazKvqoo",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Outreach Log",
+                    "mode": "name"
+                },
+                "columns": {
+                    "mappingMode": "autoMapInputData",
+                    "value": {},
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "tenant_name",
+                            "displayName": "tenant_name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "entity_name",
+                            "displayName": "entity_name",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "property_address",
+                            "displayName": "property_address",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "unit",
+                            "displayName": "unit",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "monthly_rent",
+                            "displayName": "monthly_rent",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "accrued_balance",
+                            "displayName": "accrued_balance",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "balance_ratio",
+                            "displayName": "balance_ratio",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "escalation_stage",
+                            "displayName": "escalation_stage",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "date_sent",
+                            "displayName": "date_sent",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "source",
+                            "displayName": "source",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        },
+                        {
+                            "id": "manual_contact",
+                            "displayName": "manual_contact",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true,
+                            "removed": false
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                },
+                "options": {}
+            },
+            "id": "df295971-35f4-4397-a2df-94d98b5c29c7",
+            "name": "Append Outreach Log",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                608,
+                304
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "qnmyL4iPKr6G2c3A",
+                    "name": "Google Sheets Credential 1"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "sendTo": "={{ $('Explode Tenants').item.json._send_to }}",
+                "subject": "={{ $('Explode Tenants').item.json.subject }}",
+                "emailType": "text",
+                "message": "={{ $('Explode Tenants').item.json.body }}",
+                "options": {
+                    "appendAttribution": false,
+                    "ccList": "={{ $('Explode Tenants').item.json._cc }}"
+                }
+            },
+            "id": "b746d60c-364e-47d9-99a6-53f456d69f24",
+            "name": "Send Tenant Email",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2.2,
+            "position": [
+                800,
+                304
+            ],
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 5000,
+            "webhookId": "85dad87e-ee8f-48aa-ae5f-231619354273",
+            "credentials": {
+                "gmailOAuth2": {
+                    "id": "1KvTTeWhttAclTVM",
+                    "name": "Altmark Insurance Gmail"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "jsCode": "// PREP PROCESSING LOG ROW \u2014 one row recording that this report email was handled,\n// with counts. Appending the message id here prevents the same report from being\n// processed twice on a later poll.\ntry {\n  const c = ($json && $json._control) || {};\n  return {\n    json: {\n      email_message_id: c.message_id || '',\n      date_processed: c.today || '',\n      tenants_in_report: c.tenants_in_report != null ? c.tenants_in_report : '',\n      emails_sent: c.emails_sent_count != null ? c.emails_sent_count : 0,\n    },\n  };\n} catch (err) {\n  throw new Error('Prep Processing Log Row failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "b8797201-5ed4-4f34-ae05-03c0f3873d31",
+            "name": "Prep Processing Log Row",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                208,
+                512
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "documentId": {
+                    "__rl": true,
+                    "value": "1YoE91mQSxP2yGaYPIWZtDILhULjPXIXIGyxxazKvqoo",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Report Processing Log",
+                    "mode": "name"
+                },
+                "columns": {
+                    "mappingMode": "autoMapInputData",
+                    "value": {},
+                    "matchingColumns": [],
+                    "schema": [
+                        {
+                            "id": "email_message_id",
+                            "displayName": "email_message_id",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "date_processed",
+                            "displayName": "date_processed",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "tenants_in_report",
+                            "displayName": "tenants_in_report",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        },
+                        {
+                            "id": "emails_sent",
+                            "displayName": "emails_sent",
+                            "required": false,
+                            "defaultMatch": false,
+                            "display": true,
+                            "type": "string",
+                            "canBeUsedToMatch": true
+                        }
+                    ],
+                    "attemptToConvertTypes": false,
+                    "convertFieldsToString": false
+                },
+                "options": {}
+            },
+            "id": "75d47798-9b06-41e8-86f9-79869d1a36be",
+            "name": "Update Processing Log",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.7,
+            "position": [
+                400,
+                512
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "qnmyL4iPKr6G2c3A",
+                    "name": "Google Sheets Credential 1"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "jsCode": "// BUILD DAILY SUMMARY \u2014 render the summary email body/recipients from the single\n// decision item. In DRY_RUN it goes to TEST_EMAIL with a [TEST MODE] subject;\n// live it goes to Yair and Matt.\ntry {\n  const c = ($json && $json._control) || {};\n  const s = ($json && $json.summary) || {};\n  const dry = c.dry_run === true;\n  const t = s.totals || {};\n\n  const line = (x) => '- ' + x;\n  const tenantLine = (e) => `   ${e.name} | ${e.property} | Unit ${e.unit}`;\n  const sentLine = (e) => `   ${e.name} | ${e.property} | Unit ${e.unit} | $${e.balance} | rent $${e.rent} | ratio ${e.ratio} | ${e.stage}`;\n  const block = (title, arr, fmt) => {\n    const a = arr || [];\n    let out = `\\n${title} (${a.length}):\\n`;\n    out += a.length ? a.map(fmt).join('\\n') : '   (none)';\n    return out + '\\n';\n  };\n\n  let body = '';\n  body += `RENT DELINQUENCY SUMMARY \u2014 ${c.today || ''}\\n`;\n  body += dry ? '*** DRY RUN \u2014 no tenants were contacted; all mail routed to the test address ***\\n' : '';\n  body += block('EMAILS SENT TODAY', s.emails_sent, sentLine);\n  body += block('ESCALATION NEEDED \u2014 PERSONAL OUTREACH REQUIRED', s.escalation_needed,\n    (e) => `   ${e.name} | ${e.property} | Unit ${e.unit} | days since final: ${e.days_since_final}`);\n  body += block('SKIPPED \u2014 RECENTLY CONTACTED (cooldown not elapsed)', s.recently_contacted,\n    (e) => `   ${e.name} | ${e.property} | Unit ${e.unit} | last: ${e.last_stage} (${e.days_since}d ago)`);\n  body += block('SKIPPED \u2014 MANUALLY CONTACTED', s.manually_contacted, tenantLine);\n  body += block('SKIPPED \u2014 DO NOT CONTACT', s.do_not_contact, tenantLine);\n  body += block('COI OVERLAP WARNING (also received a COI email today)', s.coi_overlap, tenantLine);\n  body += block('DATA ISSUES \u2014 NO EMAIL', s.no_email, tenantLine);\n  body += block('DATA ISSUES \u2014 $0 / NEGATIVE RENT', s.bad_rent, tenantLine);\n  body += block('DATA ISSUES \u2014 RATIO ABOVE 50 (likely data error)', s.data_error,\n    (e) => `   ${e.name} | ${e.property} | Unit ${e.unit} | ratio ${e.balance_ratio}`);\n  body += '\\nREPORT TOTALS:\\n';\n  body += line(`Total tenants in report: ${t.tenants_in_report}`) + '\\n';\n  body += line(`Meeting 2x threshold: ${t.meeting_threshold}`) + '\\n';\n  body += line(`Outreach sent: ${t.outreach_sent}`) + '\\n';\n  body += line(`Skipped (all reasons): ${t.skipped_all}`) + '\\n';\n  body += line(`Below threshold: ${t.below_threshold}`) + '\\n';\n\n  const subject = (dry ? '[TEST MODE] ' : '') + `Rent Delinquency Summary \u2014 ${c.today || ''}`;\n  return [{ json: {\n    _send_to: dry ? (c.test_email || 'jtsomwaru@gmail.com') : 'yair@altmarkgroup.com, matt@altmarkgroup.com',\n    _cc: '',\n    subject: subject,\n    body: body,\n  } }];\n} catch (err) {\n  throw new Error('Build Summary failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+            },
+            "id": "024688d8-ef1f-410f-9272-f8889e26d12f",
+            "name": "Build Daily Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                208,
+                672
+            ]
+        },
+        {
+            "parameters": {
+                "sendTo": "={{ $json._send_to }}",
+                "subject": "={{ $json.subject }}",
+                "emailType": "text",
+                "message": "={{ $json.body }}",
+                "options": {
+                    "appendAttribution": false,
+                    "ccList": "={{ $json._cc }}"
+                }
+            },
+            "id": "f3922f48-86ea-48f9-8ab4-70dcb3598be1",
+            "name": "Send Daily Summary",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2.2,
+            "position": [
+                400,
+                672
+            ],
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 5000,
+            "webhookId": "b59fb6ce-8c4a-46cb-89d4-1ce1b9862dc6",
+            "credentials": {
+                "gmailOAuth2": {
+                    "id": "1KvTTeWhttAclTVM",
+                    "name": "Altmark Insurance Gmail"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {},
+            "id": "69fac5b0-7c94-42bd-a363-999bb8188b39",
+            "name": "Error Trigger",
+            "type": "n8n-nodes-base.errorTrigger",
+            "typeVersion": 1,
+            "position": [
+                -400,
+                880
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// BUILD ERROR ALERT \u2014 runs on the Error Trigger path. Summarizes the failed\n// node/execution and routes the alert to the test address (safe default).\ntry {\n  const e = $json || {};\n  const wf = (e.workflow && e.workflow.name) ? e.workflow.name : 'Rent Delinquency Outreach';\n  const node = (e.execution && e.execution.lastNodeExecuted) ? e.execution.lastNodeExecuted : 'unknown node';\n  const msg = (e.execution && e.execution.error && e.execution.error.message)\n    ? e.execution.error.message : 'No error message available';\n  const subject = `[WORKFLOW ERROR] ${wf} \u2014 failed at ${node}`;\n  const body = `The \"${wf}\" workflow errored.\\n\\nFailed node: ${node}\\nError: ${msg}\\n\\n` +\n    `No further outreach was sent for this run. Review the n8n execution log.`;\n  return [{ json: { _send_to: 'jtsomwaru@gmail.com', _cc: '', subject, body } }];\n} catch (err) {\n  return [{ json: { _send_to: 'jtsomwaru@gmail.com', _cc: '',\n    subject: '[WORKFLOW ERROR] Rent Delinquency Outreach',\n    body: 'The workflow errored and the error handler could not parse the details.' } }];\n}\n"
+            },
+            "id": "b4e3d0ad-c898-4d36-8782-8843a9d3c715",
+            "name": "Build Error Alert",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -208,
+                880
+            ]
+        },
+        {
+            "parameters": {
+                "sendTo": "={{ $json._send_to }}",
+                "subject": "={{ $json.subject }}",
+                "emailType": "text",
+                "message": "={{ $json.body }}",
+                "options": {
+                    "appendAttribution": false
+                }
+            },
+            "id": "d362f714-a743-4630-8c80-8d0017145104",
+            "name": "Send Error Alert",
+            "type": "n8n-nodes-base.gmail",
+            "typeVersion": 2.2,
+            "position": [
+                0,
+                880
+            ],
+            "retryOnFail": true,
+            "maxTries": 2,
+            "waitBetweenTries": 5000,
+            "webhookId": "66594c03-b34c-41be-9f4c-16fb472881c7",
+            "credentials": {
+                "gmailOAuth2": {
+                    "id": "1KvTTeWhttAclTVM",
+                    "name": "Altmark Insurance Gmail"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "pollTimes": {
+                    "item": [
+                        {
+                            "mode": "everyMinute"
+                        }
+                    ]
+                },
+                "filters": {
+                    "q": "subject:\"[TEST] Delinquency Report\" has:attachment"
+                }
+            },
+            "type": "n8n-nodes-base.gmailTrigger",
+            "typeVersion": 1.3,
+            "position": [
+                -1968,
+                240
+            ],
+            "id": "9ca7ee02-0635-47a5-adcf-cdfbc65e21c1",
+            "name": "Gmail Trigger",
+            "credentials": {
+                "gmailOAuth2": {
+                    "id": "1KvTTeWhttAclTVM",
+                    "name": "Altmark Insurance Gmail"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Parse Excel": {
+            "main": [
+                [
+                    {
+                        "node": "Step 3 - Entity Association",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Step 3 - Entity Association": {
+            "main": [
+                [
+                    {
+                        "node": "Safety Flags",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Safety Flags": {
+            "main": [
+                [
+                    {
+                        "node": "Read Processing Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Read Processing Log": {
+            "main": [
+                [
+                    {
+                        "node": "Read Outreach Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Read Outreach Log": {
+            "main": [
+                [
+                    {
+                        "node": "Read Do Not Contact",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Read Do Not Contact": {
+            "main": [
+                [
+                    {
+                        "node": "Read COI Alert Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Read COI Alert Log": {
+            "main": [
+                [
+                    {
+                        "node": "Process & Decide",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Process & Decide": {
+            "main": [
+                [
+                    {
+                        "node": "Already Processed?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Already Processed?": {
+            "main": [
+                [
+                    {
+                        "node": "Stop - Already Processed",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Batch Exceeded?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Batch Exceeded?": {
+            "main": [
+                [
+                    {
+                        "node": "Build Batch Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Explode Tenants",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Prep Processing Log Row",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Build Daily Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Batch Alert": {
+            "main": [
+                [
+                    {
+                        "node": "Send Batch Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Explode Tenants": {
+            "main": [
+                [
+                    {
+                        "node": "Prep Outreach Log Row",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prep Outreach Log Row": {
+            "main": [
+                [
+                    {
+                        "node": "Append Outreach Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Append Outreach Log": {
+            "main": [
+                [
+                    {
+                        "node": "Send Tenant Email",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prep Processing Log Row": {
+            "main": [
+                [
+                    {
+                        "node": "Update Processing Log",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Daily Summary": {
+            "main": [
+                [
+                    {
+                        "node": "Send Daily Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Error Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Build Error Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Error Alert": {
+            "main": [
+                [
+                    {
+                        "node": "Send Error Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1",
+        "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "versionId": "a8b4bc9e-7658-40b6-8a61-9e9c20d9a316",
+    "activeVersionId": null,
+    "versionCounter": 22,
+    "triggerCount": 0,
+    "shared": [
+        {
+            "updatedAt": "2026-05-26T13:33:51.168Z",
+            "createdAt": "2026-05-26T13:33:51.168Z",
+            "role": "workflow:owner",
+            "workflowId": "eUDdZzMc2Dj0yQ96",
+            "projectId": "M5j8V2OnY8MNXcIg",
+            "project": {
+                "updatedAt": "2026-04-28T15:11:36.335Z",
+                "createdAt": "2026-04-28T15:01:58.034Z",
+                "id": "M5j8V2OnY8MNXcIg",
+                "name": "JT Somwaru <jtsomwaru@gmail.com>",
+                "type": "personal",
+                "icon": null,
+                "description": null,
+                "creatorId": "fc386ea4-00a5-429f-9d32-409f0712a958"
+            }
+        }
+    ],
+    "tags": [],
+    "activeVersion": null
+}
