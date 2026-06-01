@@ -1,0 +1,251 @@
+{
+  "_backup_metadata": {
+    "workflow_id": "AOQgsFtNHaNeaHPy",
+    "workflow_name": "Altmark — COI Expiration Tracking FINAL 2",
+    "backed_up_at": "2026-06-01",
+    "backed_up_by": "claude-agent",
+    "reason": "Pre-template-update backup before applying Altmark's 6 new email templates (Initial/Followup/Final × Approaching/Already-Expired)",
+    "source_versionId": "f88f89f7-964e-4eb3-a5ef-8728b10555c5",
+    "source_activeVersionId": "f88f89f7-964e-4eb3-a5ef-8728b10555c5",
+    "source_versionCounter": 121,
+    "source_updatedAt": "2026-05-21T16:31:53.044Z",
+    "source_active": true,
+    "source_isArchived": false
+  },
+  "id": "AOQgsFtNHaNeaHPy",
+  "name": "Altmark — COI Expiration Tracking FINAL 2",
+  "active": true,
+  "isArchived": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "VmTEKedZ01uof2Un",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "f88f89f7-964e-4eb3-a5ef-8728b10555c5",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "9a6d05c3-2c6e-426b-94f3-8bdf586909e6",
+      "name": "Daily 7AM ET",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-1104, 48]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "coi-manual-run",
+        "options": {}
+      },
+      "id": "1e557c25-154a-4369-9c59-ebd396458342",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1104, 208],
+      "webhookId": "33227981-d422-4ab2-88cb-cb981dae1acd"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "17ZHhmjSoUg7KKBD4jnvzlcH88lqlyEHCORTzBTpJISY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "COI Policy Data",
+          "mode": "name"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 2,
+              "firstDataRow": 4
+            }
+          }
+        }
+      },
+      "id": "4adfef42-6c04-43f8-b9b2-5aadb7619f89",
+      "name": "Read COI Policy Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-880, 112],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "qnmyL4iPKr6G2c3A",
+          "name": "Google Sheets Credential 1"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "17ZHhmjSoUg7KKBD4jnvzlcH88lqlyEHCORTzBTpJISY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "COI Alert Log",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "14040aaa-9f2a-40a8-947f-9a7e480540db",
+      "name": "Read Alert Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-656, 112],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "qnmyL4iPKr6G2c3A",
+          "name": "Google Sheets Credential 1"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "_node_note": "Classify Tenants — this is the node whose jsCode we are about to modify. The full pre-edit jsCode is preserved verbatim in the sibling .js file: coi-expiration-tracking-FINAL-2-pre-template-update-2026-06-01.classify-tenants.js",
+      "id": "6aa67edc-6af9-49a7-becb-f35e3670b455",
+      "name": "Classify Tenants",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-432, 112],
+      "parameters_jsCode_see_sibling_file": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "send_email",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "b1c8f702-5fd5-4da2-b5a9-85b4459149d2",
+      "name": "IF send_email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-224, 112]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.send_to }}",
+        "subject": "={{ $json.email_subject }}",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "appendAttribution": false,
+          "ccList": "={{ $json.cc_list }}",
+          "senderName": "={{ $json.entity_name }}"
+        }
+      },
+      "id": "e9accc3b-698e-427c-a694-5db45e96638e",
+      "name": "Send Tenant Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [0, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "bfcc5500-ccd7-4729-b82c-b8825f0488fd",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1KvTTeWhttAclTVM",
+          "name": "Altmark Insurance Gmail"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "_node_note": "Prep Log Row — not modified by this edit. Pre-edit jsCode preserved in: coi-expiration-tracking-FINAL-2-pre-template-update-2026-06-01.prep-log-row.js",
+      "id": "520401be-4cce-4022-8782-94f432bc61e8",
+      "name": "Prep Log Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, 0]
+    },
+    {
+      "_node_note": "Append to Alert Log — googleSheets schema preserved in workflow body, not duplicated here for brevity. See Beelink workflow history for full schema.",
+      "id": "1ae44573-6113-42b3-9d47-833314ebd59b",
+      "name": "Append to Alert Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [448, 0]
+    },
+    {
+      "_node_note": "Build Daily Summary — not modified by this edit. Pre-edit jsCode preserved in: coi-expiration-tracking-FINAL-2-pre-template-update-2026-06-01.build-daily-summary.js",
+      "id": "4c069606-52b1-4d10-aed6-75ec0ba4a484",
+      "name": "Build Daily Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [656, 112],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.send_to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Altmark Group"
+        }
+      },
+      "id": "0ff88593-22d7-4e64-a2c1-a0a3321bcbac",
+      "name": "Send Daily Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [880, 112],
+      "webhookId": "3cd90bbc-fd11-491f-a6d8-fa54ae5ccdf6",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1KvTTeWhttAclTVM",
+          "name": "Altmark Insurance Gmail"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 7AM ET": {"main": [[{"node": "Read COI Policy Data", "type": "main", "index": 0}]]},
+    "Webhook": {"main": [[{"node": "Read COI Policy Data", "type": "main", "index": 0}]]},
+    "Read COI Policy Data": {"main": [[{"node": "Read Alert Log", "type": "main", "index": 0}]]},
+    "Read Alert Log": {"main": [[{"node": "Classify Tenants", "type": "main", "index": 0}]]},
+    "Classify Tenants": {"main": [[{"node": "IF send_email", "type": "main", "index": 0}, {"node": "Build Daily Summary", "type": "main", "index": 0}]]},
+    "IF send_email": {"main": [[{"node": "Send Tenant Email", "type": "main", "index": 0}]]},
+    "Send Tenant Email": {"main": [[{"node": "Prep Log Row", "type": "main", "index": 0}]]},
+    "Prep Log Row": {"main": [[{"node": "Append to Alert Log", "type": "main", "index": 0}]]},
+    "Build Daily Summary": {"main": [[{"node": "Send Daily Summary", "type": "main", "index": 0}]]}
+  }
+}
