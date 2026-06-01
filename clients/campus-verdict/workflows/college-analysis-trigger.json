@@ -1,0 +1,104 @@
+{
+  "name": "Campus Verdict — College Analysis Trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "college-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "id": "c1a1b1c1-0001-4001-a001-000000000001",
+      "name": "Webhook",
+      "webhookId": "college-analysis-hook",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Validate required input fields and normalize payload for engine\nconst input = $input.first().json;\n\nconst required = ['productId', 'productName', 'brand', 'callbackUrl', 'callbackSecret'];\nconst missing = required.filter(f => !input[f]);\n\nif (missing.length > 0) {\n  throw new Error('Missing required fields: ' + missing.join(', '));\n}\n\nreturn [{\n  json: {\n    productId: input.productId,\n    productName: input.productName,\n    brand: input.brand,\n    category: input.category || 'college',\n    priceUsd: input.price || 0,\n    website: input.website || '',\n    callbackUrl: input.callbackUrl,\n    callbackSecret: input.callbackSecret,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "id": "c1a1b1c1-0002-4002-a002-000000000002",
+      "name": "Validate Input"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8002/analyze",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 300],
+      "id": "c1a1b1c1-0003-4003-a003-000000000003",
+      "name": "POST to Engine",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status: 'accepted', message: 'Analysis queued for processing'}) }}",
+        "responseCode": 202,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [980, 300],
+      "id": "c1a1b1c1-0004-4004-a004-000000000004",
+      "name": "Respond 202"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "POST to Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST to Engine": {
+      "main": [
+        [
+          {
+            "node": "Respond 202",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "pinData": {}
+}

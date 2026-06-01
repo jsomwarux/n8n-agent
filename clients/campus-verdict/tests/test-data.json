@@ -1,0 +1,10 @@
+{
+  "productId": "test-college-001",
+  "productName": "MIT",
+  "brand": "Massachusetts Institute of Technology",
+  "category": "college",
+  "price": 59750,
+  "website": "https://www.mit.edu",
+  "callbackUrl": "http://localhost:3000/api/analysis-callback",
+  "callbackSecret": "test-secret-123"
+}
