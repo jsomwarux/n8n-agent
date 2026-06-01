@@ -380,6 +380,107 @@ When iterating on an existing deployed workflow, prefer
 - Include cost tracking Set node at the end of every ensemble workflow
 - If a credential is not yet set up, note this in the output — do not let it fail silently
 
+### n8n Node Versioning — target the deploy instance, not @latest
+
+The n8n-mcp `get_node` schema reports the LATEST node `typeVersion` from its bundled
+database. The deploy instance is often older, and any node whose `typeVersion`
+exceeds what the instance ships with will throw **"Install this node to use it"**
+on import (a confusing message — the issue is version mismatch, not a missing
+community node). Before building, find out which n8n version the target instance
+runs and pick `typeVersion`s that don't exceed its ceiling.
+
+How to find the right `typeVersion` cheaply:
+1. **Read a known-working workflow from the same instance** — its node versions
+   are the ground truth (e.g. `clients/altmark/.../coi-expiration-tracking.json`
+   was the source of truth for Altmark's Beelink).
+2. If no reference is available, fall back to the most widely-supported version
+   below the current `get_node` `currentVersion` (Gmail Trigger 1.2, IF 2.3,
+   spreadsheetFile 2, code 2 are broadly safe).
+3. Never use a `typeVersion` that adds a feature you do not use — e.g. don't take
+   gmailTrigger 1.4 just because you have it; 1.4 added `maxResults`, which is the
+   exact field that fails to register on older instances.
+
+**Altmark/Beelink is pinned to n8n 2.18.4.** Working versions on that instance:
+gmailTrigger **1.2** (not 1.4), gmail 2.2, googleSheets 4.7, if 2.3, code 2,
+spreadsheetFile 2, readWriteFile 1, scheduleTrigger 1.3, webhook 2, noOp 1,
+errorTrigger 1. The Gmail Trigger is the historical offender — verify each new
+workflow's trigger version against this list before sending the JSON to the user.
+See `tasks/lessons.md` lessons #94, #99 and the memory note `altmark-beelink-n8n`.
+
+### n8n Direct Deploy Rules (Beelink via n8n-beelink MCP)
+
+- PROTECTED, LIVE, READ-ONLY (never update, overwrite, delete, deactivate, or archive):
+    AOQgsFtNHaNeaHPy  (COI Expiration Tracking FINAL 2 — active production)
+    VmTEKedZ01uof2Un  (Workflow Error Alerts — active)
+- Always operate by workflow ID, never by name. Multiple COI workflows have nearly identical names.
+- Never touch any workflow whose name contains "COI" through the API. COI cleanup is a manual UI task done by JT.
+- Never activate or deactivate any workflow through the API. Deploy deactivated. Activation is manual in the UI.
+- Before archiving or deleting anything, export its JSON to backups/ first.
+- DRY_RUN is a manual flag, never set by the agent. Build every new workflow with DRY_RUN defaulting to true. Never change an existing workflow's DRY_RUN value through the API in either direction. Going live (true to false) is a manual UI edit, exactly like activation. The live COI workflow runs DRY_RUN false by design and is protected read-only above.
+
+### Fail-Safe Safety Flags
+
+All DRY_RUN and safety-flag checks must fail safe. A missing, undefined, or
+non-boolean flag must default to the safe (dry-run) state — never to live. Use
+the pattern `flag !== false`, not `flag === true`:
+
+```js
+// WRONG — defaults to LIVE on missing key, typo, wrong type, or zero items:
+const DRY_RUN = flagsSrc._DRY_RUN === true;
+
+// RIGHT — defaults to DRY on anything ambiguous;
+// only the explicit boolean `false` flips to live:
+const DRY_RUN = flagsSrc._DRY_RUN !== false;
+```
+
+When reading a flag from another node, wrap the upstream accessor so a missing
+node or zero items can't throw or coerce to live either:
+
+```js
+const flagsSrc = (() => {
+  try { return $('Safety Flags')?.first()?.json ?? {}; }
+  catch (e) { return {}; }
+})();
+```
+
+Apply to every new workflow with external side effects (email/SMS sends, API
+writes, paid LLM calls, billing operations, anything irreversible). Common flag
+names that must follow this pattern: `DRY_RUN`, `ALLOW_PRODUCTION_CC`,
+`LIVE_MODE`, `SEND_FOR_REAL`, or any client-specific equivalent. The intent:
+the ONLY path to live behavior is a human writing the literal boolean `false`
+in the Safety Flags node; every other state — missing flag, typo, deleted
+upstream node, zero items, string `"false"` — collapses to dry. Precedent:
+Altmark Rent Delinquency (`eUDdZzMc2Dj0yQ96`) Process & Decide node.
+
+### DRY_RUN Verification Gate
+
+Apply this to every workflow with external side effects from now on.
+
+**Principle.** Never run a workflow against real or realistic data with
+side-effect nodes enabled until DRY_RUN's reroute has been observed resolving
+to the test sink from behind a physical barrier. The barrier, not the flag,
+makes verification safe.
+
+**Procedure** (agent owns mechanics, human gives final go/no-go):
+
+1. **Disable every node with an external side effect** — email/Slack/Telegram
+   sends, Sheets/DB writes, HTTP posts, webhooks — by setting `disabled: true`.
+   Partial update, `validateOnly` first. Do not touch DRY_RUN, BATCH_LIMIT, or
+   active. This barrier means nothing can send or write during verification.
+2. **Provide test data that exercises every recipient-resolving branch:** a
+   small batch to hit the per-item path, plus a large batch to hit any
+   throttle/batch branch.
+3. **Confirm every recipient or target field** on every side-effect-bound item
+   (`_send_to`, `_cc`, `_bcc`, sheet/db target) resolves to the test sink with
+   zero real addresses, on every branch that ran.
+4. **Only after step 3 passes:** re-enable the side-effect nodes, confirm
+   production-ready state (side-effect nodes enabled, DRY_RUN true, active
+   false), then run once for real in DRY_RUN to confirm delivery lands at the
+   test sink.
+
+**Hard rule.** Never re-enable side-effect nodes until step 3 passes. Always
+report the actual resolved recipient values, not just pass or fail.
+
 ### Code Style in Code Nodes
 
 - Every variable must be defined before use
