@@ -1,0 +1,102 @@
+{
+  "name": "Altmark \u2014 Step 3 Verifier (isolation test, no side effects)",
+  "nodes": [
+    {
+      "id": "v-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -600,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "v-read",
+      "name": "Read Delinquency File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        0
+      ],
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "C:/n8n/test-data/delinquency-20260519.xlsx"
+      }
+    },
+    {
+      "id": "v-parse",
+      "name": "Parse Excel",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {
+        "operation": "fromFile",
+        "fileFormat": "xlsx",
+        "binaryPropertyName": "data",
+        "options": {
+          "range": "10",
+          "headerRow": true,
+          "includeEmptyCells": true
+        }
+      }
+    },
+    {
+      "id": "v-step3",
+      "name": "Step 3 - Entity Association",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// STEP 3 \u2014 Entity Association (the critical parsing step)\n// Input: rows from the Spreadsheet File node (header row 11 \u2192 keys: Unit, Name,\n// Amount Receivable, Last Payment, Payment Amount, 0-30, 30+, Rent, Primary Tenant Email).\n// Output: ONE item per tenant data row, each with _entity_name and _property_address\n// attached. Entity-header rows and subtotal/grand-total rows are consumed/skipped.\ntry {\n  let currentEntity = '';\n  let currentAddress = '';\n  const tenantRows = [];\n\n  for (const item of items) {\n    const j = item.json || {};\n    const unit = (j['Unit'] || '').toString().trim();\n    const name = (j['Name'] || '').toString().trim();\n    const amountReceivable = j['Amount Receivable'];\n\n    // Skip fully empty rows\n    if (!unit && !name && (amountReceivable === undefined || amountReceivable === null || amountReceivable === '')) {\n      continue;\n    }\n\n    // Entity header row: Column A populated, Column B (Name) empty, contains \" - \"\n    if (unit && !name && unit.includes(' - ')) {\n      const parts = unit.split(' - ');\n      currentEntity = parts[0].trim();\n      currentAddress = parts.slice(1).join(' - ').trim();\n      continue;\n    }\n\n    // Grand total row: Unit === \"Total\"\n    if (unit === 'Total') {\n      continue;\n    }\n\n    // Subtotal rows: no Name value (numeric-only rows after each entity group)\n    if (!name || name === 'Total') {\n      continue;\n    }\n\n    // Tenant data row \u2014 attach the current entity context\n    j._entity_name = currentEntity;\n    j._property_address = currentAddress;\n    tenantRows.push({ json: j });\n  }\n\n  return tenantRows;\n} catch (err) {\n  // Surface a clear error so the Error Trigger path can report it\n  throw new Error('Step 3 entity association failed: ' + (err && err.message ? err.message : String(err)));\n}\n"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Delinquency File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Delinquency File": {
+      "main": [
+        [
+          {
+            "node": "Parse Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Excel": {
+      "main": [
+        [
+          {
+            "node": "Step 3 - Entity Association",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/New_York"
+  }
+}
